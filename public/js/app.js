@@ -6,13 +6,16 @@ const CONFIG = {
   apiBase: '',                 // اتركه فارغاً إذا كان الموقع والخادم على نفس الدومين
   avatarImage: 'assets/avatar.jpg',
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
-  maxRecordSeconds: 15,
-  silenceMs: 1400,             // يوقف التسجيل تلقائياً بعد هذا الصمت
+  maxRecordSeconds: 25,
+  silenceMs: 1800,             // يوقف التسجيل تلقائياً بعد هذا الصمت
   showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
   idleStatus: 'اضغط للتحدث',
   didStatus: 'تحدّث مع نزيه مباشرة من الأعلى، أو اختر سؤالاً',   // نص الحالة عند تشغيل شخصية D-ID
-  didWaitSeconds: 12,          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
+  didWaitSeconds: 12,
+  ownBrain: true,              // true: الموقع يسمع ويفهم ويبحث في الأنظمة ويجاوب، وشخصية D-ID تنطق فقط. false: الرجوع لعقل D-ID
+  pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
+  talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
   greeting: 'حياك الله! أنا نزيه. اسألني عن النزاهة ومكافحة الفساد، أو اسحب الأسئلة واختر ما يهمك، أو قل: اختبرني.',
 };
 
@@ -313,16 +316,55 @@ function initDID() {
       document.body.classList.add('did-on');
       CONFIG.idleStatus = CONFIG.didStatus; setStatus(CONFIG.idleStatus);
       try {
-        api.events?.on('agentActivity', ({ state }) => app.classList.toggle('talking', state === 'TALKING'));
+        api.events?.on('agentActivity', ({ state }) => {
+          didTalking = state === 'TALKING';
+          app.classList.toggle('talking', didTalking);
+          if (CONFIG.ownBrain) muteDid();
+          else if (CONFIG.pushToTalk && didTalking) setMic(false);      // نزيه بدأ يجاوب: يُقفل المايك
+        });
+        api.events?.on('connection', () => { if (CONFIG.ownBrain) muteDid(); else if (CONFIG.pushToTalk) setMic(false); });
         api.events?.on('error', ({ error }) => console.warn('D-ID:', error));
       } catch (e) { console.warn(e); }
+      if (CONFIG.ownBrain) { document.body.classList.add('ptt'); muteDid(); setInterval(muteDid, 4000); }
+      else if (CONFIG.pushToTalk) { document.body.classList.add('ptt'); setMic(false); setTimeout(() => setMic(micOpen), 3000); }
     } else if (performance.now() - started > CONFIG.didWaitSeconds * 1000) clearInterval(timer);
   }, 300);
 }
 
+/* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
+let didTalking = false;
+function muteDid() { try { Promise.resolve(did?.functions.toggleMicState(true)).catch(() => {}); } catch {} }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function waitDidDone(len) {            // ينتظر حتى ينتهي نزيه من نطق المقطع
+  const t0 = performance.now(), est = 2500 + len * 95;
+  while (!didTalking && performance.now() - t0 < 6000) await sleep(150);       // حتى يبدأ
+  if (!didTalking) { await sleep(Math.min(est, 20000)); return; }              // لا توجد إشارة: انتظار تقديري
+  while (didTalking && performance.now() - t0 < est * 2 + 15000) await sleep(200);
+}
+function splitForSpeech(text, max = 700) {   // تقسيم النص الطويل عند نهايات الجمل
+  const parts = []; let cur = '';
+  for (const seg of String(text).split(/(?<=[.؟!؛:\n])\s+/)) {
+    if ((cur + ' ' + seg).length > max && cur) { parts.push(cur.trim()); cur = seg; } else cur += ' ' + seg;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
+/* اضغط للتحدث: فتح وقفل مايك D-ID من زر الموقع */
+let micOpen = false, micTimer;
+function setMic(open) {
+  micOpen = open; clearTimeout(micTimer);
+  try { Promise.resolve(did?.functions.toggleMicState(!open)).catch(() => {}); } catch {}   // true = كتم
+  micBtn.classList.toggle('listening', open);
+  $('#pttLabel').textContent = open ? 'أسمعك... تكلّم الآن، واضغط عند الانتهاء' : 'اضغط للتحدث';
+  if (open) micTimer = setTimeout(() => setMic(false), CONFIG.talkMaxSeconds * 1000);
+}
+
 /* ---------------- النطق ---------------- */
 const ttsCache = new Map();   // الإجابات الجاهزة تُحفظ بعد أول نطق فتصير فورية
+let speakSeq = 0;
 function stopSpeaking() {
+  speakSeq++;
   if (did) { try { Promise.resolve(did.functions.interrupt()).catch(() => {}); } catch {} return; }
   if (currentSrc) { try { currentSrc.stop(); } catch {} currentSrc = null; }
   if (window.speechSynthesis) speechSynthesis.cancel();
@@ -332,8 +374,14 @@ async function speak(text) {
   stopSpeaking();
   if (did) {
     if (!text) return;
-    try { await did.functions.speak({ type: 'text', input: text }); }
-    catch (e) { console.warn('D-ID speak:', e); setStatus('اضغط على نزيه في الأعلى لبدء المحادثة، ثم اختر السؤال', 'err'); }
+    const my = ++speakSeq;
+    try {
+      for (const part of splitForSpeech(text)) {
+        if (my !== speakSeq) return;                       // قوطع بسؤال جديد
+        await did.functions.speak({ type: 'text', input: part });
+        await waitDidDone(part.length);
+      }
+    } catch (e) { console.warn('D-ID speak:', e); setStatus('اضغط على نزيه في الأعلى لبدء المحادثة، ثم اختر السؤال', 'err'); }
     return;
   }
   if (!settings.voice || !text) return;
@@ -378,6 +426,7 @@ let history = [], busy = false, session = 0;
 function setStatus(t, cls = '') {
   const s = $('#status'); s.textContent = t; s.className = `status ${cls}`;
   clearTimeout(setStatus.timer);
+  if (did) $('#pttLabel').textContent = (cls === 'err' || t === CONFIG.idleStatus) ? 'اضغط للتحدث' : t;
   if (did && cls === 'err') setStatus.timer = setTimeout(() => { s.className = 'status'; }, 5000);   // تنبيه مؤقت فوق الفيديو
 }
 function showCaption(q, a, thinking = false) {
@@ -409,6 +458,82 @@ const INTENT_LINES = {
 };
 function findBank(text) { const n = norm(text); return BANK.find((b) => norm(b.q) === n) || BANK.find((b) => b.k.some((k) => n.includes(k))); }
 
+/* =========================================================
+ *  البحث في الأنظمة (محلياً داخل الموقع)
+ * ========================================================= */
+const LAW_ALIASES = {
+  basic: ['الاساسي للحكم', 'نظام الحكم', 'النظام الاساسي'], shura: ['الشوري'], regions: ['المناطق'], cabinet: ['مجلس الوزراء'], bayah: ['البيعه'],
+  nazaha: ['هيئه الرقابه', 'نظام نزاهه', 'نظام الهيئه', 'نظام مكافحه الفساد'], bribery: ['الرشوه'], protect: ['المبلغين', 'الشهود'], aml: ['غسل الاموال', 'غسيل الاموال'],
+  forgery: ['التزوير'], discipline: ['الانضباط'], civil: ['الخدمه المدنيه'],
+};
+const textLaws = () => (window.LAWS || []).filter((l) => !l.pages && l.id !== 'forgery-old');
+let lastLawId = null;
+function detectLaw(n) {
+  for (const [id, keys] of Object.entries(LAW_ALIASES)) if (keys.some((k) => n.includes(k))) return id;
+  const extra = textLaws().find((l) => l.id.startsWith('extra-') && n.includes(norm(l.name).split(' ').slice(0, 3).join(' ')));
+  return extra ? extra.id : null;
+}
+/* تحويل «الثامنة» / «الحادية والعشرون» / «12» إلى رقم */
+const NUM_WORDS = [['عشرون', 20], ['عشرين', 20], ['ثلاثون', 30], ['ثلاثين', 30], ['اربعون', 40], ['اربعين', 40], ['خمسون', 50], ['خمسين', 50], ['ستون', 60], ['ستين', 60], ['سبعون', 70], ['سبعين', 70], ['ثمانون', 80], ['ثمانين', 80], ['تسعون', 90], ['تسعين', 90],
+  ['حادي', 1], ['احدي', 1], ['احد', 1], ['واحد', 1], ['اثن', 2], ['ثلاث', 3], ['اربع', 4], ['خمس', 5], ['ست', 6], ['سبع', 7], ['ثمان', 8], ['تسع', 9], ['اول', 1], ['ثاني', 2], ['ثالث', 3], ['رابع', 4], ['خامس', 5], ['سادس', 6], ['سابع', 7], ['ثامن', 8], ['تاسع', 9], ['عاشر', 10]];
+function wordNum(w) {
+  w = w.replace(/^و/, '').replace(/^ال/, '');
+  if (/^[0-9٠-٩]+$/.test(w)) return Number(w.replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x660));
+  if (w === 'عشر' || w === 'عشره') return 10;
+  const hit = NUM_WORDS.find(([k]) => w.startsWith(k));
+  return hit ? hit[1] : null;
+}
+function articleNumber(str) {                 // من نص بعد كلمة «المادة»
+  const toks = norm(str).replace(/[()«»"':،.؟?]/g, ' ').trim().split(/\s+/).slice(0, 3);
+  let total = 0, got = false;
+  for (const tk of toks) { const v = wordNum(tk); if (v === null) break; total += v; got = true; if (/^[0-9٠-٩]+$/.test(tk)) break; }
+  return got ? total : null;
+}
+function lookupArticle(text) {
+  const n = norm(text), m = n.match(/(?:الماده|ماده)\s+(.{1,40})/);
+  if (!m) return null;
+  const num = articleNumber(m[1]); if (!num) return null;
+  const lawId = detectLaw(n) || lastLawId;
+  if (!lawId) return 'أبشر، من أي نظام تريد هذه المادة؟ اذكر اسم النظام مع رقم المادة، مثل: المادة الثامنة من النظام الجزائي لجرائم التزوير.';
+  const law = textLaws().find((l) => l.id === lawId); if (!law) return null;
+  lastLawId = lawId;
+  const art = law.articles.find((a) => !/مكرر/.test(a.title) && articleNumber(a.title.replace(/^.*?ماده\s*|^المادة\s*/, '')) === num);
+  if (!art) return `لم أجد المادة رقم ${num} في ${law.name}، وعدد مواده ${law.articles.filter((a) => !/مكرر/.test(a.title)).length}.`;
+  return `${art.title} من ${law.name}: ${art.body}`;
+}
+/* اختيار المواد الأقرب للسؤال لإرسالها مع السؤال إلى الذكاء الاصطناعي */
+const STOP = new Set('من في علي الي عن ما هو هي هل كم ماذا متي اين كيف وش ايش ليش لماذا هذا هذه ذلك التي الذي او ان اذا لو مع بين كل قد لا نعم ابي ابغي اريد عطني اذكر اقرا لي نص نظام النظام الماده ماده عقوبه العقوبه'.split(' '));
+let LAW_INDEX = null;
+function buildIndex() {
+  LAW_INDEX = [];
+  for (const law of textLaws()) for (const a of law.articles) LAW_INDEX.push({ law, a, n: norm(law.name + ' ' + a.title + ' ' + a.chapter + ' ' + a.body) });
+}
+function retrieveContext(text) {
+  if (!LAW_INDEX) buildIndex();
+  const n = norm(text), lawId = detectLaw(n); if (lawId) lastLawId = lawId;
+  const terms = [...new Set(n.replace(/[^ء-ي0-9\s]/g, ' ').split(/\s+/).map((w) => w.replace(/^(وال|بال|لل|ال|و)/, '')).map((w) => (w.length > 5 ? w.replace(/(ات|ين|ون)$/, '') : w)).filter((w) => w.length > 2 && !STOP.has(w)))];
+  // إذا ذُكر نظام بعينه وكان قصيراً يُرسل كاملاً، فيجد الذكاء الاصطناعي المادة المطلوبة أياً كانت صياغة السؤال
+  const named = lawId && textLaws().find((l) => l.id === lawId);
+  if (named) {
+    const whole = named.articles.map((a) => `【${named.name} — ${a.title}】\n${a.body}\n\n`).join('');
+    if (whole.length <= 13000) return whole;
+  }
+  if (!terms.length) return '';
+  const scored = LAW_INDEX.map((e) => {
+    let sc = 0;
+    for (const tm of terms) { const c = e.n.split(tm).length - 1; if (c) sc += Math.min(c, 3) * (tm.length > 4 ? 2 : 1); }
+    if (sc && lawId && e.law.id === lawId) sc += 6;
+    return { e, sc };
+  }).filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 10);
+  let out = '';
+  for (const { e } of scored) {
+    const block = `【${e.law.name} — ${e.a.title}】\n${e.a.body.slice(0, 1800)}\n\n`;
+    if (out.length + block.length > 12000) break;
+    out += block;
+  }
+  return out;
+}
+
 async function ask(text, item = null) {
   text = (text || '').trim();
   if (!text || busy) return;
@@ -422,9 +547,11 @@ async function ask(text, item = null) {
   history.push({ role: 'user', content: text });
   setStatus('نزيه يفكر...');
   let reply, suggestions = [], hit = item;
-  if (!hit) {
+  const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
+  if (exact) reply = exact;
+  if (!hit && !exact) {
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history }) });
+      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text) }) });
       const data = await r.json();
       if (!r.ok || !data.reply) throw new Error(data.error);
       reply = data.reply; suggestions = data.suggestions || [];
@@ -516,6 +643,20 @@ carousel.addEventListener('scroll', () => {
 /* ---------------- التسجيل الصوتي ---------------- */
 let recState = null;
 micBtn.addEventListener('click', () => {
+  if (did && CONFIG.ownBrain) {               // عقل الموقع: الزر يسجّل سؤال الزائر ثم يتوقف تلقائياً عند الصمت
+    buzz(15);
+    if (recState) { recState.stop(); return; }
+    if (busy) return;
+    stopSpeaking(); ensureAudio();
+    if (navigator.mediaDevices?.getUserMedia && window.MediaRecorder) startRecording();
+    else startBrowserRecognition();
+    return;
+  }
+  if (did && CONFIG.pushToTalk) {            // مع شخصية D-ID: الزر يفتح المايك أو يقفله
+    buzz(15);
+    if (!micOpen) { try { Promise.resolve(did.functions.interrupt()).catch(() => {}); } catch {} }
+    setMic(!micOpen); return;
+  }
   ensureAudio(); buzz(15);
   const wasTalking = talking;
   stopSpeaking();

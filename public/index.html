@@ -53,6 +53,7 @@
       </button>
       <div class="wave" id="waveL"></div>
     </div>
+    <div id="pttLabel" class="ptt-label">اضغط للتحدث</div>
     <div id="status" class="status" role="status">اضغط للتحدث</div>
 
     <!-- ====== الكتابة والإعدادات ====== -->
@@ -146,6 +147,7 @@
 
 <!-- ====== ربط شخصية D-ID ======
      لإيقافها والرجوع للصورة المتحركة: احذف وسم script التالي كاملاً.
+     data-auto-connect="true" يبدأ الاتصال تلقائياً عند فتح الصفحة (احذف السطر للرجوع لزر START CALL).
      لتغيير الوكيل: غيّر data-client-key و data-agent-id (والنطاق يُضاف في Allowed domains عند D-ID). -->
 <script type="module"
       src="https://agent.d-id.com/v2/index.js"
@@ -157,7 +159,9 @@
       data-monitor="true"
       data-light-mode="true"
       data-orientation="horizontal"
-      data-show-agent-name="false">
+      data-show-agent-name="false"
+      data-auto-connect="true"
+      data-speech-silence-timeout-ms="1800">
 </script>
 
 <script src="js/law-data.js"></script>
