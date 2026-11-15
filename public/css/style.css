@@ -51,7 +51,10 @@ svg .fill{fill:currentColor;stroke:none}
 /* شخصية D-ID الحية: تملأ إطار الشخصية عند تفعيلها */
 #did{position:absolute;inset:0;z-index:2;display:none}
 #did>*{width:100%!important;height:100%!important}
-body.did-on #did{display:block;inset:calc(3.5*var(--u)) var(--side) calc(8*var(--u));border-radius:calc(4*var(--u));overflow:hidden;box-shadow:var(--shadow);background:#fff}
+/* الإطار بنسبة قريبة من نسبة الفيديو (16:10) حتى لا يُقصّ الرأس ولا الشعاران */
+body.did-on #did{display:block;inset:auto;top:calc(3.5*var(--u));left:50%;transform:translateX(-50%);aspect-ratio:16/10;
+  width:min(calc(100cqi - 2*var(--side)),calc((100cqb - 11.5*var(--u))*1.6));
+  border-radius:calc(4*var(--u));overflow:hidden;box-shadow:var(--shadow);background:#fff}
 body.did-on .stage-box{display:none}
 body.did-on #stage{flex:4 1 calc(96*var(--u));max-height:none}
 body.did-on .mic-zone,body.did-on .text-form,body.did-on .row.local-only{display:none}
