@@ -71,25 +71,12 @@
     </section>
 
     <section class="sheet" id="sheet-laws" hidden aria-label="الأنظمة">
-      <header><h2>الأنظمة ذات العلاقة</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <header><h2>الأنظمة واللوائح ذات العلاقة</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
       <div class="sheet-body">
         <p class="sub">المصدر: هيئة الخبراء بمجلس الوزراء — <span dir="ltr">laws.boe.gov.sa</span></p>
-        <article class="card">
-          <div class="law-head"><h3>نظام هيئة الرقابة ومكافحة الفساد</h3><span class="badge">النص الكامل</span></div>
-          <p class="meta">صدر بالمرسوم الملكي رقم (م/25) وتاريخ 1446/1/23هـ — ويُعمل به بعد (90) يوماً من نشره في الجريدة الرسمية.</p>
-          <input id="lawSearch" class="law-search" type="search" placeholder="ابحث في مواد النظام... (مثال: الرشوة، الثروة، المحكمة)">
-          <div id="lawArticles" class="articles"></div>
-        </article>
-        <article class="card">
-          <h3>نظام مكافحة الرشوة</h3>
-          <p class="meta">صدر بالمرسوم الملكي رقم (م/36) وتاريخ 29/12/1412هـ</p>
-          <p>يجرّم طلب الموظف العام أو قبوله أو أخذه وعداً أو عطية مقابل أداء عمل من أعمال وظيفته أو الامتناع عنه — ولو كان العمل مشروعاً — ويعاقب الراشي والوسيط كذلك. وبموجب المرسوم الملكي (م/25) حلّت عبارة «هيئة الرقابة ومكافحة الفساد» محل «رئاسة أمن الدولة» أينما وردت في هذا النظام.</p>
-        </article>
-        <article class="card">
-          <h3>نظام حماية المبلّغين والشهود والخبراء والضحايا</h3>
-          <p class="meta">وافق عليه مجلس الوزراء عام 1445هـ (2024م)</p>
-          <p>يهدف إلى تشجيع الإبلاغ عن المخالفات والجرائم، ويوفّر الحماية اللازمة للمبلّغين والشهود والخبراء والضحايا، ويحفظ سرية هوياتهم، ويمنع إلحاق الضرر بهم بسبب بلاغاتهم أو شهاداتهم.</p>
-        </article>
+        <input id="lawSearch" class="law-search" type="search" placeholder="ابحث في جميع الأنظمة... (مثال: الرشوة، التزوير، المبلّغ)">
+        <p id="lawCount" class="meta" aria-live="polite"></p>
+        <div id="lawList"></div>
         <article class="card">
           <h3>الاستراتيجية الوطنية لحماية النزاهة ومكافحة الفساد</h3>
           <p>إطار وطني لحماية النزاهة ومكافحة الفساد، وقد ألزم قرار مجلس الوزراء رقم (68) الجهاتِ المعنية بتنفيذ ما نصت عليه، وإفادة الهيئة دورياً بما قامت به.</p>
@@ -174,6 +161,7 @@
 </script>
 
 <script src="js/law-data.js"></script>
+<script src="js/laws-extra.js"></script>
 <script src="js/quiz-data.js"></script>
 <script src="js/app.js"></script>
 </body>

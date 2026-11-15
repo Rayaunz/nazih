@@ -606,23 +606,76 @@ function closeSheets() { $$('.sheet').forEach((s) => { s.hidden = true; }); }
 $$('[data-close]').forEach((b) => b.addEventListener('click', () => { closeSheets(); buzz(8); }));
 
 /* الأنظمة */
+/* تقسيم نص نظام ملصوق في laws-extra.js إلى مواد أو بنود */
+function parseLawText(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n').map((l) => l.trimEnd());
+  const ART = /^(ال)?مادة\s*[(\d\u0600-\u06FF\s)]{0,40}:?\s*$/;
+  const ORD = /^(أولاً|ثانياً|ثالثاً|رابعاً|خامساً|سادساً|سابعاً|ثامناً|تاسعاً|عاشراً)\s*:/;
+  const HEAD = /^(الباب|الفصل)\s+(الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|الحادي)/;
+  const byArticle = lines.some((l) => ART.test(l.trim()) && l.trim().length < 45);
+  const arts = [], pre = []; let cur = null, chapter = '';
+  for (const l of lines) {
+    const s = l.trim();
+    if (byArticle && HEAD.test(s) && s.length < 90) { chapter = s; cur = null; continue; }
+    if (byArticle && ART.test(s) && s.length < 45) {
+      cur = { title: s.replace(/:$/, '').replace(/\s+/g, ' ').replace(/^مادة\s*/, 'المادة '), chapter, body: [] }; arts.push(cur); continue;
+    }
+    if (!byArticle && ORD.test(s)) { cur = { title: 'البند ' + s.match(ORD)[1], chapter: '', body: [l] }; arts.push(cur); continue; }
+    (cur ? cur.body : pre).push(l);
+  }
+  const join = (a) => a.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  arts.forEach((x) => { x.body = join(x.body); });
+  return { preamble: join(pre), articles: arts };
+}
+(function mergeExtraLaws() {
+  const all = window.LAWS || [], extra = (window.EXTRA_LAWS || []).map((e, i) => ({ id: 'extra-' + i, name: e.name || '', decree: e.decree || '', note: e.note || '', preLabel: 'تمهيد', ...parseLawText(e.text) }));
+  const at = all.findIndex((l) => l.pages);            // الإضافات قبل اللوائح المصوّرة
+  window.LAWS = at < 0 ? [...all, ...extra] : [...all.slice(0, at), ...extra, ...all.slice(at)];
+})();
+
+/* نمط بحث يتجاهل التشكيل واختلاف الهمزات والتاء المربوطة */
+function searchRegex(q) {
+  const map = { 'ا': '[اأإآ]', 'ه': '[هة]', 'ي': '[يى]' };
+  const body = [...norm(q)].map((ch) => map[ch] || ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\u064B-\u0652\u0640]*');
+  return new RegExp(body, 'g');
+}
 function renderLaw(filter = '') {
-  const box = $('#lawArticles'), law = window.NAZAHA_LAW;
-  let f = filter.trim();
-  const match = (a, t) => a.title.includes(t) || a.body.includes(t);
-  const items = [{ title: 'المرسوم الملكي وقرار مجلس الوزراء', chapter: '', body: law.preamble }, ...law.articles];
-  if (f.startsWith('ال') && f.length > 3 && !items.some((a) => match(a, f))) f = f.slice(2);
-  const hl = (t) => {
-    const safe = escapeHTML(t); if (!f) return safe;
-    return safe.replace(new RegExp(escapeHTML(f).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), (m) => `<mark>${m}</mark>`);
-  };
-  const shown = items.filter((a) => !f || match(a, f));
-  box.innerHTML = shown.length
-    ? shown.map((a) => `<details ${f ? 'open' : ''}><summary><span>${hl(a.title)}<span class="chapter">${escapeHTML(a.chapter || '')}</span></span></summary><div class="body">${hl(a.body)}</div></details>`).join('')
-    : '<p>لا توجد نتائج مطابقة.</p>';
+  const box = $('#lawList'), laws = window.LAWS || [];
+  let f = filter.trim(), re = f ? searchRegex(f) : null;
+  const match = (a) => { re.lastIndex = 0; if (re.test(a.title)) return true; re.lastIndex = 0; return re.test(a.body); };
+  const itemsOf = (law) => (law.preamble ? [{ title: law.preLabel || 'المرسوم الملكي وقرار مجلس الوزراء', chapter: '', body: law.preamble }] : []).concat(law.articles);
+  if (f.startsWith('ال') && f.length > 3 && !laws.some((l) => itemsOf(l).some(match))) { f = f.slice(2); re = searchRegex(f); }   // «الثروة» ← «ثروة»
+  const hl = (t) => { const safe = escapeHTML(t); return re ? safe.replace(re, (m) => `<mark>${m}</mark>`) : safe; };
+  let total = 0;
+  const html = laws.map((law) => {
+    if (law.pages) {   // لائحة معروضة كصور صفحات (غير قابلة للبحث)
+      if (f) return '';
+      return `<details class="law pages" data-law="${law.id}">
+        <summary><span class="law-name">${escapeHTML(law.name)}<small>${escapeHTML(law.decree)}</small></span><span class="badge">${law.pages.length} صفحة</span></summary>
+        <div class="pages-box"></div></details>`;
+    }
+    const shown = itemsOf(law).filter((a) => !f || match(a));
+    if (!shown.length) return '';
+    total += shown.length;
+    total += 0; const count = f ? `${shown.length} نتيجة` : `${law.articles.length} ${(law.articles[0]?.title || '').startsWith('البند') ? 'بنود' : 'مادة'}`;
+    return `<details class="law" ${f ? 'open' : ''}>
+      <summary><span class="law-name">${escapeHTML(law.name)}<small>${escapeHTML(law.decree)}${!law.decree || /هـ|م$/.test(law.decree) ? '' : 'هـ'}</small></span><span class="badge">${count}</span></summary>
+      ${law.note ? `<p class="law-note">${escapeHTML(law.note)}</p>` : ''}
+      <div class="articles">${shown.map((a) => `<details ${f ? 'open' : ''}><summary><span>${hl(a.title)}<span class="chapter">${escapeHTML(a.chapter || '')}</span></span></summary><div class="body">${hl(a.body)}</div></details>`).join('')}</div>
+    </details>`;
+  }).join('');
+  box.innerHTML = html || '<p>لا توجد نتائج مطابقة.</p>';
+  // صور الصفحات تُحمّل فقط عند فتح اللائحة
+  $$('details.law.pages', box).forEach((d) => d.addEventListener('toggle', () => {
+    const pb = $('.pages-box', d); if (!d.open || pb.childElementCount) return;
+    const law = laws.find((l) => l.id === d.dataset.law);
+    pb.innerHTML = law.pages.map((p, i) => `<img loading="lazy" src="${p}" alt="${escapeHTML(law.name)} — صفحة ${i + 1}">`).join('');
+  }));
+  $('#lawCount').textContent = f ? (total ? `${total} نتيجة في الأنظمة (اللوائح المصوّرة لا يشملها البحث)` : '') : `${laws.length} أنظمة ولوائح — اضغط على الاسم للعرض`;
 }
 renderLaw();
-$('#lawSearch').addEventListener('input', (e) => renderLaw(e.target.value));
+let lawTimer;
+$('#lawSearch').addEventListener('input', (e) => { clearTimeout(lawTimer); lawTimer = setTimeout(() => renderLaw(e.target.value), 250); });
 
 /* الاختبار التفاعلي */
 let quiz = null;

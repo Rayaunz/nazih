@@ -169,6 +169,19 @@ body.no-text .text-form{visibility:hidden}
 .law-head{display:flex;align-items:center;justify-content:space-between;gap:calc(2*var(--u))}
 .badge{flex:none;border:1px solid var(--gold);color:var(--gold-d);border-radius:99px;font-size:calc(2.3*var(--u));padding:0 calc(2*var(--u))}
 .law-search{width:100%;height:calc(8.4*var(--u));padding:0 calc(3.4*var(--u));margin:calc(1.4*var(--u)) 0 calc(2*var(--u));border-radius:99px;border:1px solid var(--line);background:#f4f7f4;color:var(--ink);font:inherit;font-size:calc(3*var(--u)*var(--fs));outline:none;user-select:text;-webkit-user-select:text}
+details.law{background:#fff;border:1px solid var(--line);border-radius:calc(3.5*var(--u));margin-bottom:calc(1.8*var(--u));overflow:hidden}
+details.law>summary{display:flex;align-items:center;justify-content:space-between;gap:calc(2*var(--u));padding:calc(2.2*var(--u)) calc(3*var(--u));list-style:none;cursor:pointer}
+details.law>summary::-webkit-details-marker{display:none}
+details.law[open]>summary{border-bottom:1px solid var(--line);background:var(--green-soft)}
+.law-name{font-size:calc(3.3*var(--u)*var(--fs));font-weight:700;color:var(--green);line-height:1.5}
+.law-name small{display:block;font-size:calc(2.4*var(--u)*var(--fs));font-weight:400;color:var(--muted)}
+details.law>.articles{padding:calc(2*var(--u))}
+.law-note{margin:calc(2*var(--u)) calc(2*var(--u)) 0;padding:calc(1.2*var(--u)) calc(2.4*var(--u));border-radius:calc(2*var(--u));background:#fbe9e7;color:#8c2b20;font-size:calc(2.7*var(--u)*var(--fs))}
+.pages-box{padding:calc(2*var(--u));display:grid;gap:calc(1.6*var(--u));justify-items:center;background:#eef1ee}
+.pages-box img{width:100%;max-width:calc(150*var(--u));height:auto;aspect-ratio:210/297;background:#fff;border-radius:calc(1.2*var(--u));box-shadow:0 1px 6px rgba(0,0,0,.15)}
+#lawCount{text-align:center;margin-bottom:calc(1.6*var(--u))}
+/* لوحة الأنظمة أطول لتسهيل القراءة */
+body.did-on #sheet-laws{inset-block-start:calc(13*var(--u))}
 .articles details{border:1px solid var(--line);border-radius:calc(2.6*var(--u));margin-bottom:calc(1.2*var(--u));background:#fbfdfb}
 .articles summary{padding:calc(2*var(--u)) calc(2.8*var(--u));font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:calc(2*var(--u));cursor:pointer}
 .articles summary::-webkit-details-marker{display:none}
