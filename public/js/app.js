@@ -8,6 +8,7 @@ const CONFIG = {
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
   maxRecordSeconds: 15,
   silenceMs: 1400,             // يوقف التسجيل تلقائياً بعد هذا الصمت
+  showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
   idleStatus: 'اضغط للتحدث',
   didStatus: 'تحدّث مع نزيه مباشرة من الأعلى، أو اختر سؤالاً',   // نص الحالة عند تشغيل شخصية D-ID
@@ -18,13 +19,13 @@ const CONFIG = {
 /* إحداثيات الوجه بمقاس صورة الشخصية (2322×768). لو غيّرت الصورة عدّل هذه الأرقام فقط.
    جرّب بعد التعديل: ‎/?test=open‎ (فم مفتوح) و ‎/?test=blink‎ (عين مغمضة) و ‎/?test=1‎ (كلام تجريبي) */
 const FACE = {
-  mouthX: 1187, mouthY: 502,   // منتصف خط التقاء الشفتين
-  mouthHalfW: 43,              // نصف عرض الفم
-  jaw: { x0: 1045, x1: 1334, yBottom: 630 },  // حدود الفك والذقن
+  mouthX: 1160, mouthY: 505,   // منتصف خط التقاء الشفتين
+  mouthHalfW: 44,              // نصف عرض الفم
+  jaw: { x0: 1006, x1: 1310, yBottom: 642 },  // حدود الفك والذقن
   maxOpen: 14,                 // أقصى فتحة للفم بالبكسل
-  eyes: [{ x: 1131, y: 357, rx: 26, ry: 10 }, { x: 1264, y: 367, rx: 26, ry: 10 }],
-  head: { cx: 1187, cy: 368, rx: 335, ry: 400 }, // المنطقة التي تتحرك (الرأس والشماغ فقط)
-  pivot: { x: 1187, y: 700 },  // نقطة ارتكاز حركة الرأس (الرقبة)
+  eyes: [{ x: 1101, y: 348, rx: 26, ry: 10 }, { x: 1241, y: 359, rx: 26, ry: 10 }],
+  head: { cx: 1175, cy: 380, rx: 345, ry: 400 }, // المنطقة التي تتحرك (الرأس والشماغ فقط)
+  pivot: { x: 1160, y: 715 },  // نقطة ارتكاز حركة الرأس (الرقبة)
 };
 
 /* ---------------- بنك الأسئلة المتحركة ----------------
@@ -374,13 +375,23 @@ async function speak(text) {
 const capEl = $('#caption'), capQ = $('#capQ'), capA = $('#capA'), micBtn = $('#micBtn');
 let history = [], busy = false, session = 0;
 
-function setStatus(t, cls = '') { const s = $('#status'); s.textContent = t; s.className = `status ${cls}`; }
+function setStatus(t, cls = '') {
+  const s = $('#status'); s.textContent = t; s.className = `status ${cls}`;
+  clearTimeout(setStatus.timer);
+  if (did && cls === 'err') setStatus.timer = setTimeout(() => { s.className = 'status'; }, 5000);   // تنبيه مؤقت فوق الفيديو
+}
 function showCaption(q, a, thinking = false) {
   capEl.classList.toggle('asked', !!q);
   capQ.hidden = !q; capQ.textContent = q || '';
   if (thinking) capA.innerHTML = '<span class="dots" aria-label="نزيه يفكر"><i></i><i></i><i></i></span>'; else capA.textContent = a;
   capEl.scrollTop = 0;
+  // مع شخصية D-ID: الإجابة المكتوبة تظهر مؤقتاً فوق الفيديو ثم تختفي
+  clearTimeout(showCaption.timer);
+  const visible = thinking || !!q || (!!a && a !== CONFIG.greeting);
+  capEl.classList.toggle('show', visible);
+  if (did && visible && !thinking) showCaption.timer = setTimeout(() => capEl.classList.remove('show'), Math.max(9000, String(a).length * 110));
 }
+capEl.addEventListener('click', () => { if (did) capEl.classList.remove('show'); });
 function setBusy(on) { busy = on; micBtn.classList.toggle('busy', on); }
 
 /* تحديد نية الزائر: يفتح الوظيفة المناسبة بدل الجواب النصي */
@@ -694,7 +705,7 @@ function resetIdle() {
     closeSheets(); newChat();
     followUps = []; renderCarousel(true);
     $('#lawSearch').value = ''; renderLaw();
-    onboard.hidden = false;
+    onboard.hidden = !CONFIG.showWelcome;
   }, CONFIG.idleResetSeconds * 1000);
 }
 ['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, resetIdle));
@@ -704,5 +715,5 @@ applySettings();
 initDID();
 renderCarousel(true);
 showCaption('', CONFIG.greeting);
-if (TEST) onboard.hidden = true;
+if (TEST || !CONFIG.showWelcome) onboard.hidden = true;
 resetIdle();
