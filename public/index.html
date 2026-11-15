@@ -3,128 +3,142 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f3f6f3">
 <title>نزيه | اليوم العالمي لمكافحة الفساد — جامعة حائل</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="app" data-view="assistant">
+<div id="app">
 
   <!-- ====== العنوان ====== -->
-  <header class="hero">
-    <div class="orn" aria-hidden="true"><i></i><b></b><i></i></div>
-    <h1>اليوم العالمي لمكافحة الفساد</h1>
-    <div class="date"><i></i><span>9 ديسمبر</span><i></i></div>
-    <p class="slogan">معاً .. لمجتمع نزيه وشفاف</p>
+  <header class="top glass">
+    <img class="logo" src="assets/uoh-logo.png" alt="جامعة حائل">
+    <div class="ttl">
+      <h1>اليوم العالمي لمكافحة الفساد</h1>
+      <p><span class="date">9 ديسمبر</span><span class="slogan">معاً .. لمجتمع نزيه وشفاف</span></p>
+    </div>
+    <img class="logo" src="assets/nazaha-logo.jpg" alt="هيئة الرقابة ومكافحة الفساد - نزاهة">
   </header>
 
   <!-- ====== الشخصية ====== -->
   <div id="stage">
-    <canvas id="cv" width="1402" height="1122" aria-label="الشخصية الافتراضية نزيه"></canvas>
-    <div id="caption" hidden aria-live="polite"></div>
+    <div class="stage-box">
+      <canvas id="cv" width="2400" height="692" role="img" aria-label="الشخصية الافتراضية نزيه"></canvas>
+    </div>
+    <div class="talk-badge" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
 
-  <main>
-    <!-- ====== 1: اسأل نزيه ====== -->
-    <section id="view-assistant" class="view active">
-      <div class="quick">
-        <h2><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>أسئلة سريعة</h2>
-        <div class="chips">
-          <button class="chip" data-q="ما هي أهمية مكافحة الفساد؟"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg><span>ما هي أهمية مكافحة الفساد؟</span></button>
-          <button class="chip" data-q="ما هو دور نزاهة؟"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg><span>ما هو دور نزاهة؟</span></button>
-          <button class="chip" data-q="معلومات عن جامعة حائل"><svg viewBox="0 0 24 24"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5M22 9v6"/></svg><span>معلومات عن جامعة حائل</span></button>
-          <button class="chip" data-q="كيف أبلغ عن حالة فساد؟"><svg viewBox="0 0 24 24"><path d="M3 10v4h3l8 5V5l-8 5z"/><path d="M18 9a4 4 0 0 1 0 6M20.5 6.5a8 8 0 0 1 0 11"/></svg><span>كيف أبلغ عن حالة فساد؟</span></button>
-        </div>
-      </div>
-
-      <div class="mic-zone">
-        <div class="wave" id="waveR"></div>
-        <button id="micBtn" class="mic-btn" aria-label="اضغط للتحدث">
-          <svg viewBox="0 0 24 24"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15z"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5V21M9 21h6" class="ln"/></svg>
-        </button>
-        <div class="wave" id="waveL"></div>
-      </div>
-      <div id="status" class="status">اضغط للتحدث</div>
+  <div class="lower">
+    <!-- ====== بطاقة نزيه والإجابة ====== -->
+    <section id="caption" class="glass" aria-live="polite">
+      <div class="who"><b>نزيه</b><span>مساعدك الافتراضي للنزاهة ومكافحة الفساد</span></div>
+      <p id="capQ" class="q" hidden></p>
+      <p id="capA"></p>
     </section>
 
-    <!-- ====== 2: الأنظمة ====== -->
-    <section id="view-laws" class="view scroll">
-      <h2 class="view-title">الأنظمة ذات العلاقة</h2>
-      <p class="view-sub">المصدر: هيئة الخبراء بمجلس الوزراء — <span dir="ltr">laws.boe.gov.sa</span></p>
-      <div class="law-cards">
-        <article class="law-card featured">
+    <!-- ====== الأسئلة المتحركة ====== -->
+    <div class="carousel-wrap">
+      <div id="carousel" class="carousel" role="list" aria-label="أسئلة مقترحة، اسحب للمزيد"></div>
+    </div>
+
+    <!-- ====== المايك ====== -->
+    <div class="mic-zone">
+      <div class="wave" id="waveR"></div>
+      <button id="micBtn" class="mic-btn" aria-label="اضغط للتحدث">
+        <svg viewBox="0 0 24 24"><path class="fill" d="M12 15a3.500 3.500 0 0 0 3.500-3.500v-6a3.500 3.500 0 0 0-7 0v6A3.500 3.500 0 0 0 12 15z"/><path d="M6 11.500a6 6 0 0 0 12 0M12 17.500V21M9 21h6"/></svg>
+      </button>
+      <div class="wave" id="waveL"></div>
+    </div>
+    <div id="status" class="status" role="status">اضغط للتحدث</div>
+
+    <!-- ====== الكتابة والإعدادات ====== -->
+    <div class="input-row">
+      <form id="textForm" class="text-form glass">
+        <input id="textInput" type="text" placeholder="اكتب سؤالك هنا .." autocomplete="off" enterkeyhint="send" aria-label="اكتب سؤالك">
+        <button type="submit" aria-label="إرسال"><svg viewBox="0 0 24 24"><path d="M3 11.500 21 3l-6.500 18-3-7.500z"/></svg></button>
+      </form>
+      <button id="settingsBtn" class="settings-btn glass"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.400 13a7.600 7.600 0 0 0 0-2l2-1.500-2-3.500-2.400 1a7.600 7.600 0 0 0-1.700-1L15 3.500h-4l-.300 2.500a7.600 7.600 0 0 0-1.700 1l-2.400-1-2 3.500 2 1.500a7.600 7.600 0 0 0 0 2l-2 1.500 2 3.500 2.400-1a7.600 7.600 0 0 0 1.700 1l.300 2.500h4l.300-2.500a7.600 7.600 0 0 0 1.700-1l2.400 1 2-3.500z"/></svg><span>الإعدادات</span></button>
+    </div>
+
+    <!-- ====== اللوحات (تفتح فوق الجزء السفلي والشخصية تبقى ظاهرة) ====== -->
+    <section class="sheet" id="sheet-quiz" hidden aria-label="اختبر نفسك">
+      <header><h2>اختبر نفسك</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <div class="sheet-body" id="quiz"></div>
+    </section>
+
+    <section class="sheet" id="sheet-laws" hidden aria-label="الأنظمة">
+      <header><h2>الأنظمة ذات العلاقة</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <div class="sheet-body">
+        <p class="sub">المصدر: هيئة الخبراء بمجلس الوزراء — <span dir="ltr">laws.boe.gov.sa</span></p>
+        <article class="card">
           <div class="law-head"><h3>نظام هيئة الرقابة ومكافحة الفساد</h3><span class="badge">النص الكامل</span></div>
-          <p class="law-meta">صدر بالمرسوم الملكي رقم (م/25) وتاريخ 1446/1/23هـ — ويُعمل به بعد (90) يوماً من نشره في الجريدة الرسمية.</p>
+          <p class="meta">صدر بالمرسوم الملكي رقم (م/25) وتاريخ 1446/1/23هـ — ويُعمل به بعد (90) يوماً من نشره في الجريدة الرسمية.</p>
           <input id="lawSearch" class="law-search" type="search" placeholder="ابحث في مواد النظام... (مثال: الرشوة، الثروة، المحكمة)">
           <div id="lawArticles" class="articles"></div>
         </article>
-        <article class="law-card">
+        <article class="card">
           <h3>نظام مكافحة الرشوة</h3>
-          <p class="law-meta">صدر بالمرسوم الملكي رقم (م/36) وتاريخ 29/12/1412هـ</p>
+          <p class="meta">صدر بالمرسوم الملكي رقم (م/36) وتاريخ 29/12/1412هـ</p>
           <p>يجرّم طلب الموظف العام أو قبوله أو أخذه وعداً أو عطية مقابل أداء عمل من أعمال وظيفته أو الامتناع عنه — ولو كان العمل مشروعاً — ويعاقب الراشي والوسيط كذلك. وبموجب المرسوم الملكي (م/25) حلّت عبارة «هيئة الرقابة ومكافحة الفساد» محل «رئاسة أمن الدولة» أينما وردت في هذا النظام.</p>
         </article>
-        <article class="law-card">
+        <article class="card">
           <h3>نظام حماية المبلّغين والشهود والخبراء والضحايا</h3>
-          <p class="law-meta">وافق عليه مجلس الوزراء عام 1445هـ (2024م)</p>
+          <p class="meta">وافق عليه مجلس الوزراء عام 1445هـ (2024م)</p>
           <p>يهدف إلى تشجيع الإبلاغ عن المخالفات والجرائم، ويوفّر الحماية اللازمة للمبلّغين والشهود والخبراء والضحايا، ويحفظ سرية هوياتهم، ويمنع إلحاق الضرر بهم بسبب بلاغاتهم أو شهاداتهم.</p>
         </article>
-        <article class="law-card">
+        <article class="card">
           <h3>الاستراتيجية الوطنية لحماية النزاهة ومكافحة الفساد</h3>
           <p>إطار وطني لحماية النزاهة ومكافحة الفساد، وقد ألزم قرار مجلس الوزراء رقم (68) الجهاتِ المعنية بتنفيذ ما نصت عليه، وإفادة الهيئة دورياً بما قامت به.</p>
         </article>
-        <article class="law-card">
+        <article class="card">
           <h3>اتفاقية الأمم المتحدة لمكافحة الفساد</h3>
           <p>اعتمدتها الجمعية العامة للأمم المتحدة عام 2003م، وفُتح باب التوقيع عليها في 9 ديسمبر من العام نفسه — ولذلك يُحتفى بهذا التاريخ عالمياً يوماً لمكافحة الفساد. والمملكة دولة طرف فيها.</p>
         </article>
       </div>
-      <p class="boe-link">جميع الأنظمة في موقع هيئة الخبراء: <span dir="ltr">laws.boe.gov.sa</span></p>
     </section>
 
-    <!-- ====== 3: المسابقة ====== -->
-    <section id="view-quiz" class="view scroll">
-      <h2 class="view-title">اختبر نزاهتك المعرفية</h2>
-      <p class="view-sub">أسئلة من نظام هيئة الرقابة ومكافحة الفساد</p>
-      <div id="quiz" class="quiz"></div>
-    </section>
-
-    <!-- ====== 4: بلّغ ====== -->
-    <section id="view-report" class="view scroll">
-      <h2 class="view-title">شفت فساد؟ بلّغ</h2>
-      <p class="view-sub">هيئة الرقابة ومكافحة الفساد تحافظ على سرية معلومات المبلّغ</p>
-      <div class="report-grid">
-        <div class="report-card big"><strong dir="ltr">980</strong><span>الرقم المجاني</span></div>
-        <div class="report-card"><strong dir="ltr">980@nazaha.gov.sa</strong><span>البريد الإلكتروني</span></div>
-        <div class="report-card"><strong dir="ltr">nazaha.gov.sa</strong><span>خدمة البلاغات الإلكترونية والتطبيق</span></div>
-      </div>
-      <div class="report-notes">
-        <p>يمكنك تقديم البلاغ دون ذكر اسمك، بشرط أن تكون المعلومات قابلة للتحقق والتتبع.</p>
-        <p>من اختصاصات الهيئة اتخاذ جميع الإجراءات لحماية من يبلّغ أو يدلي بمعلومات عن جرائم الفساد (المادة الرابعة، الفقرة 7).</p>
-        <p>الجرائم التي تُعد فساداً: الرشوة، الاعتداء على المال العام، إساءة استعمال السلطة، وأي جريمة يُنص نظاماً على أنها فساد (المادة الثانية).</p>
-      </div>
-      <div class="countdown-box">
-        <span>متبقي على اليوم العالمي لمكافحة الفساد</span>
-        <div id="countdown" class="countdown"></div>
+    <section class="sheet" id="sheet-report" hidden aria-label="قنوات البلاغ">
+      <header><h2>قنوات البلاغ عن الفساد</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <div class="sheet-body">
+        <div class="report-grid">
+          <div class="report-card big"><strong dir="ltr">980</strong><span>الرقم المجاني</span></div>
+          <div class="report-card"><strong dir="ltr">980@nazaha.gov.sa</strong><span>البريد الإلكتروني</span></div>
+          <div class="report-card"><strong dir="ltr">nazaha.gov.sa</strong><span>البلاغات الإلكترونية والتطبيق</span></div>
+        </div>
+        <ul class="notes">
+          <li>يمكنك تقديم البلاغ دون ذكر اسمك، بشرط أن تكون المعلومات قابلة للتحقق والتتبع.</li>
+          <li>من اختصاصات الهيئة اتخاذ جميع الإجراءات لحماية من يبلّغ أو يدلي بمعلومات عن جرائم الفساد (المادة الرابعة، الفقرة 7).</li>
+          <li>نزيه لا يستقبل البلاغات ولا يحفظ أي بيانات؛ البلاغ يكون عبر القنوات الرسمية أعلاه فقط.</li>
+        </ul>
       </div>
     </section>
-  </main>
 
-  <!-- ====== الكتابة والإعدادات ====== -->
-  <div class="input-row">
-    <form id="textForm" class="text-form">
-      <input id="textInput" type="text" placeholder="اكتب سؤالك هنا .." autocomplete="off" enterkeyhint="send">
-      <button type="submit" aria-label="إرسال"><svg viewBox="0 0 24 24"><path d="M3 11.5 21 3l-6.5 18-3-7.5z"/><path d="m11.5 13.5 4-4"/></svg></button>
-    </form>
-    <button id="settingsBtn" class="settings-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.500h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.400-1-2 3.500 2 1.500a7.600 7.600 0 0 0 0 2l-2 1.500 2 3.500 2.400-1a7.600 7.600 0 0 0 1.700 1l.300 2.500h4l.300-2.500a7.600 7.600 0 0 0 1.700-1l2.400 1 2-3.500z"/></svg>الإعدادات</button>
+    <section class="sheet" id="sheet-rate" hidden aria-label="قيّم تجربتك">
+      <header><h2>قيّم تجربتك مع نزيه</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <div class="sheet-body center">
+        <p id="rateMsg">كيف كانت تجربتك؟ اختر عدد النجوم.</p>
+        <div class="stars" id="stars" role="radiogroup" aria-label="التقييم من خمس نجوم">
+          <button data-v="1" aria-label="نجمة واحدة">★</button><button data-v="2" aria-label="نجمتان">★</button><button data-v="3" aria-label="ثلاث نجوم">★</button><button data-v="4" aria-label="أربع نجوم">★</button><button data-v="5" aria-label="خمس نجوم">★</button>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <!-- ====== شريط الأقسام ====== -->
-  <nav class="bottom-nav">
-    <button data-view="assistant" class="active"><svg viewBox="0 0 24 24"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15zM6 11.5a6 6 0 0 0 12 0M12 17.5V21"/></svg>اسأل نزيه</button>
-    <button data-view="laws"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg>الأنظمة</button>
-    <button data-view="quiz"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.500 9.500a2.500 2.500 0 1 1 3.500 2.300c-.700.400-1 .900-1 1.700M12 17h.01"/></svg>المسابقة</button>
-    <button data-view="report"><svg viewBox="0 0 24 24"><path d="M3 10v4h3l8 5V5l-8 5z"/><path d="M18 9a4 4 0 0 1 0 6"/></svg>بلّغ</button>
-  </nav>
+  <!-- ====== الترحيب ====== -->
+  <div id="onboard" class="onboard">
+    <div class="onboard-card glass">
+      <h2>حياك الله، أنا نزيه</h2>
+      <p>مساعدك الافتراضي في اليوم العالمي لمكافحة الفساد</p>
+      <ul>
+        <li><svg viewBox="0 0 24 24"><path class="fill" d="M12 15a3.500 3.500 0 0 0 3.500-3.500v-6a3.500 3.500 0 0 0-7 0v6A3.500 3.500 0 0 0 12 15z"/><path d="M6 11.500a6 6 0 0 0 12 0M12 17.500V21"/></svg>اضغط المايك واسألني بصوتك</li>
+        <li><svg viewBox="0 0 24 24"><path d="M4 8h12M4 8l4-4M4 8l4 4M20 16H8m12 0-4-4m4 4-4 4"/></svg>اسحب الأسئلة يميناً ويساراً واختر ما يهمك</li>
+        <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.500 12 2.500 2.500 4.500-5"/></svg>قل «اختبرني» أو اضغط «اختبر نفسك»</li>
+      </ul>
+      <button id="startBtn" class="primary">ابدأ</button>
+    </div>
+  </div>
 </div>
 
 <!-- ====== نافذة الإعدادات ====== -->
@@ -132,6 +146,7 @@
   <h3>الإعدادات</h3>
   <label class="row">مستوى الصوت<input id="setVol" type="range" min="0" max="1" step="0.05" value="1"></label>
   <label class="row">نطق الإجابات بالصوت<input id="setVoice" type="checkbox" checked></label>
+  <label class="row">خط أكبر<input id="setBig" type="checkbox"></label>
   <label class="row">إظهار خانة الكتابة<input id="setText" type="checkbox" checked></label>
   <div class="btns">
     <button id="setNew">محادثة جديدة</button>
