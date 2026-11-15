@@ -643,7 +643,7 @@ function renderLaw(filter = '') {
   const box = $('#lawList'), laws = window.LAWS || [];
   let f = filter.trim(), re = f ? searchRegex(f) : null;
   const match = (a) => { re.lastIndex = 0; if (re.test(a.title)) return true; re.lastIndex = 0; return re.test(a.body); };
-  const itemsOf = (law) => (law.preamble ? [{ title: law.preLabel || 'المرسوم الملكي وقرار مجلس الوزراء', chapter: '', body: law.preamble }] : []).concat(law.articles);
+  const itemsOf = (law) => (law.preamble ? [{ title: law.preLabel || (law.decree.startsWith('أمر ملكي') ? 'الأمر الملكي' : 'المرسوم الملكي وقرار مجلس الوزراء'), chapter: '', body: law.preamble }] : []).concat(law.articles);
   if (f.startsWith('ال') && f.length > 3 && !laws.some((l) => itemsOf(l).some(match))) { f = f.slice(2); re = searchRegex(f); }   // «الثروة» ← «ثروة»
   const hl = (t) => { const safe = escapeHTML(t); return re ? safe.replace(re, (m) => `<mark>${m}</mark>`) : safe; };
   let total = 0;
