@@ -10,19 +10,21 @@ const CONFIG = {
   silenceMs: 1400,             // يوقف التسجيل تلقائياً بعد هذا الصمت
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
   idleStatus: 'اضغط للتحدث',
+  didStatus: 'تحدّث مع نزيه مباشرة من الأعلى، أو اختر سؤالاً',   // نص الحالة عند تشغيل شخصية D-ID
+  didWaitSeconds: 12,          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
   greeting: 'حياك الله! أنا نزيه. اسألني عن النزاهة ومكافحة الفساد، أو اسحب الأسئلة واختر ما يهمك، أو قل: اختبرني.',
 };
 
-/* إحداثيات الوجه بمقاس صورة الشخصية (2400×692). لو غيّرت الصورة عدّل هذه الأرقام فقط.
+/* إحداثيات الوجه بمقاس صورة الشخصية (2322×768). لو غيّرت الصورة عدّل هذه الأرقام فقط.
    جرّب بعد التعديل: ‎/?test=open‎ (فم مفتوح) و ‎/?test=blink‎ (عين مغمضة) و ‎/?test=1‎ (كلام تجريبي) */
 const FACE = {
-  mouthX: 1244, mouthY: 456,   // منتصف خط التقاء الشفتين
-  mouthHalfW: 39,              // نصف عرض الفم
-  jaw: { x0: 1120, x1: 1368, yBottom: 574 },  // حدود الفك والذقن
-  maxOpen: 15,                 // أقصى فتحة للفم بالبكسل
-  eyes: [{ x: 1192, y: 320, rx: 27, ry: 11 }, { x: 1305, y: 328, rx: 27, ry: 11 }],
-  head: { cx: 1244, cy: 372, rx: 350, ry: 400 }, // المنطقة التي تتحرك (الرأس والشماغ فقط)
-  pivot: { x: 1244, y: 650 },  // نقطة ارتكاز حركة الرأس (الرقبة)
+  mouthX: 1187, mouthY: 502,   // منتصف خط التقاء الشفتين
+  mouthHalfW: 43,              // نصف عرض الفم
+  jaw: { x0: 1045, x1: 1334, yBottom: 630 },  // حدود الفك والذقن
+  maxOpen: 14,                 // أقصى فتحة للفم بالبكسل
+  eyes: [{ x: 1131, y: 357, rx: 26, ry: 10 }, { x: 1264, y: 367, rx: 26, ry: 10 }],
+  head: { cx: 1187, cy: 368, rx: 335, ry: 400 }, // المنطقة التي تتحرك (الرأس والشماغ فقط)
+  pivot: { x: 1187, y: 700 },  // نقطة ارتكاز حركة الرأس (الرقبة)
 };
 
 /* ---------------- بنك الأسئلة المتحركة ----------------
@@ -294,15 +296,45 @@ function drawWave(t) {
   }
 }
 
+/* ---------------- شخصية D-ID الحية ----------------
+   إذا اشتغل وسم D-ID في index.html يظهر الأفتار الحي مكان الصورة، وهو يتولى المايك والمحادثة،
+   والأسئلة المتحركة تجعله ينطق إجاباتها الجاهزة. وإذا لم يشتغل (نطاق غير مسموح، انتهاء الرصيد، انقطاع)
+   يبقى الموقع على الصورة المتحركة وصوت OpenAI كما كان. */
+let did = null;
+function initDID() {
+  if (TEST && TEST !== 'did') return;
+  const started = performance.now();
+  const timer = setInterval(() => {
+    const api = window.DID_AGENTS_API;
+    if (api?.functions) {
+      clearInterval(timer);
+      did = api;
+      document.body.classList.add('did-on');
+      CONFIG.idleStatus = CONFIG.didStatus; setStatus(CONFIG.idleStatus);
+      try {
+        api.events?.on('agentActivity', ({ state }) => app.classList.toggle('talking', state === 'TALKING'));
+        api.events?.on('error', ({ error }) => console.warn('D-ID:', error));
+      } catch (e) { console.warn(e); }
+    } else if (performance.now() - started > CONFIG.didWaitSeconds * 1000) clearInterval(timer);
+  }, 300);
+}
+
 /* ---------------- النطق ---------------- */
 const ttsCache = new Map();   // الإجابات الجاهزة تُحفظ بعد أول نطق فتصير فورية
 function stopSpeaking() {
+  if (did) { try { Promise.resolve(did.functions.interrupt()).catch(() => {}); } catch {} return; }
   if (currentSrc) { try { currentSrc.stop(); } catch {} currentSrc = null; }
   if (window.speechSynthesis) speechSynthesis.cancel();
   setTalking(false);
 }
 async function speak(text) {
   stopSpeaking();
+  if (did) {
+    if (!text) return;
+    try { await did.functions.speak({ type: 'text', input: text }); }
+    catch (e) { console.warn('D-ID speak:', e); setStatus('اضغط على نزيه في الأعلى لبدء المحادثة، ثم اختر السؤال', 'err'); }
+    return;
+  }
   if (!settings.voice || !text) return;
   try {
     ensureAudio();
@@ -400,7 +432,7 @@ async function ask(text, item = null) {
   if (hit?.sheet) openSheet(hit.sheet);
   setStatus(CONFIG.idleStatus);
   await speak(reply);
-  if (my === session && !recState && !busy) setStatus(CONFIG.idleStatus);
+  if (my === session && !recState && !busy && !did) setStatus(CONFIG.idleStatus);
 }
 
 async function runAction(name, said = '') {
@@ -648,6 +680,7 @@ const onboard = $('#onboard');
 $('#startBtn').addEventListener('click', () => {
   ensureAudio(); buzz(15);
   onboard.hidden = true;
+  if (did) return;                                  // شخصية D-ID ترحّب بنفسها عند بدء المحادثة
   speak(CONFIG.greeting).then(() => { if (!recState && !busy) setStatus(CONFIG.idleStatus); });   // نزيه يرحّب بصوته وفمه يتحرك
 });
 
@@ -668,6 +701,7 @@ function resetIdle() {
 
 /* ---------------- البداية ---------------- */
 applySettings();
+initDID();
 renderCarousel(true);
 showCaption('', CONFIG.greeting);
 if (TEST) onboard.hidden = true;

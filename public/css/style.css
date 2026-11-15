@@ -1,11 +1,11 @@
 /* =========================================================
- *  نزيه — شاشة واحدة تفاعلية (أبيض رخامي + أخضر + ذهبي)
+ *  نزيه — شاشة واحدة تفاعلية (رخامي دافئ + أخضر + ذهبي)
  *  كل المقاسات بوحدة --u التي تتغير تلقائياً حسب الشاشة
  * ========================================================= */
 :root{
   --green:#1B5E20; --green-2:#2E7D32; --green-soft:#e6f1e7; --gold:#C9A84C; --gold-d:#9a7b2a;
   --ink:#17261c; --muted:#5d6b61; --red:#c0392b;
-  --glass:rgba(255,255,255,.74); --stroke:rgba(255,255,255,.95); --line:rgba(27,94,32,.18);
+  --glass:rgba(255,255,255,.74); --stroke:rgba(255,255,255,.95); --line:rgba(110,80,40,.2);
   --shadow:0 calc(1.2*var(--u)) calc(4*var(--u)) rgba(22,60,32,.13);
   --fs:1;                                   /* مضاعف حجم الخط (إعداد «خط أكبر») */
   --u:min(1vw,.5625dvh);                     /* الشاشات الطولية */
@@ -15,7 +15,7 @@
 body.big{--fs:1.16}
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden;background:#eef2ee;color:var(--ink);
+html,body{height:100%;overflow:hidden;background:#f1eae0;color:var(--ink);
   font-family:"IBM Plex Sans Arabic","Tajawal","Segoe UI",Tahoma,sans-serif;user-select:none;-webkit-user-select:none}
 button{font:inherit;color:inherit;cursor:pointer;border:none;background:none;touch-action:manipulation}
 svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -26,9 +26,9 @@ svg .fill{fill:currentColor;stroke:none}
 
 #app{position:relative;height:100dvh;width:100vw;display:flex;flex-direction:column;overflow:hidden;
   background:
-    radial-gradient(90% 55% at 50% 108%,rgba(27,94,32,.16),transparent 70%),
-    radial-gradient(60% 40% at 0% 60%,rgba(201,168,76,.10),transparent 70%),
-    linear-gradient(180deg,#e9f0ec 0%,#f7f8f6 38%,#eef3ef 100%)}
+    radial-gradient(90% 55% at 50% 108%,rgba(138,98,58,.20),transparent 70%),
+    radial-gradient(60% 40% at 0% 60%,rgba(201,168,76,.14),transparent 70%),
+    linear-gradient(180deg,#efe6da 0%,#f8f4ee 38%,#f0e8dc 100%)}
 
 /* ---------- العنوان ---------- */
 .top{flex:none;display:flex;align-items:center;justify-content:center;gap:calc(2.5*var(--u));
@@ -43,11 +43,22 @@ svg .fill{fill:currentColor;stroke:none}
 /* ---------- الشخصية: الحركة محصورة داخل هذا الإطار فقط ---------- */
 #stage{flex:2 1 calc(62*var(--u));min-height:calc(42*var(--u));max-height:calc(96*var(--u));position:relative;width:100%;
   overflow:hidden;contain:paint;container-type:size;display:flex;justify-content:center;margin-top:calc(-3*var(--u))}
-.stage-box{position:relative;height:100%;width:min(100cqi,347cqb);
-  -webkit-mask-image:linear-gradient(#000 74%,transparent),linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);
-  mask-image:linear-gradient(#000 74%,transparent),linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);
+.stage-box{position:relative;height:100%;width:min(100cqi,302cqb);
+  -webkit-mask-image:linear-gradient(#000 80%,transparent),linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);
+  mask-image:linear-gradient(#000 80%,transparent),linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);
   -webkit-mask-composite:source-in;mask-composite:intersect}
 #cv{width:100%;height:100%;display:block;object-fit:cover;object-position:52% 50%}
+/* شخصية D-ID الحية: تملأ إطار الشخصية عند تفعيلها */
+#did{position:absolute;inset:0;z-index:2;display:none}
+#did>*{width:100%!important;height:100%!important}
+body.did-on #did{display:block;inset:calc(3.5*var(--u)) var(--side) calc(8*var(--u));border-radius:calc(4*var(--u));overflow:hidden;box-shadow:var(--shadow);background:#fff}
+body.did-on .stage-box{display:none}
+body.did-on #stage{flex:4 1 calc(96*var(--u));max-height:none}
+body.did-on .mic-zone,body.did-on .text-form,body.did-on .row.local-only{display:none}
+body.did-on .input-row{justify-content:flex-end;padding-top:calc(.6*var(--u))}
+body.did-on #caption{flex:0 1 calc(22*var(--u));min-height:calc(14*var(--u))}
+body.did-on .talk-badge{z-index:3}
+
 /* مؤشر الصوت فوق الشخصية وقت الكلام */
 .talk-badge{position:absolute;top:calc(5*var(--u));inset-inline-start:var(--side);display:flex;align-items:center;gap:calc(.7*var(--u));
   height:calc(6*var(--u));padding:0 calc(2*var(--u));border-radius:99px;background:rgba(27,94,32,.88);opacity:0;transition:opacity .25s}
@@ -181,7 +192,7 @@ mark{background:#f3e3ae;color:inherit;border-radius:calc(.6*var(--u));padding:0 
 .stars button:active{transform:scale(1.15)}
 
 /* ---------- الترحيب ---------- */
-.onboard{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:calc(5*var(--u));background:rgba(238,243,239,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.onboard{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:calc(5*var(--u));background:rgba(244,238,230,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 .onboard[hidden]{display:none}
 .onboard-card{width:min(100%,calc(96*var(--u)));border-radius:calc(6*var(--u));padding:calc(5*var(--u));text-align:center;background:rgba(255,255,255,.92)}
 .onboard-card h2{font-size:calc(5.4*var(--u));color:var(--green)}
