@@ -224,6 +224,55 @@ function sendAudio(res, buf, hit) {
   res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store', 'X-Cache': hit ? 'hit' : 'miss' });
   res.end(buf);
 }
+/* ---------- مزوّد الصوت ----------
+   الافتراضي OpenAI. للصوت السعودي أضف في Environment أحد الخيارين (والمفتاح يبقى في الخادم):
+     Azure      : AZURE_SPEECH_KEY + AZURE_SPEECH_REGION (مثل uaenorth)، والصوت AZURE_VOICE (الافتراضي ar-SA-HamedNeural «حامد»)
+     ElevenLabs : ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID، والنموذج ELEVENLABS_MODEL (الافتراضي eleven_flash_v2_5)
+   إذا تعذّر المزوّد المختار (مفتاح خاطئ، انتهاء الحصة) يُنطق المقطع بصوت OpenAI حتى لا يسكت نزيه. */
+const AZ_KEY = process.env.AZURE_SPEECH_KEY || '', AZ_REGION = (process.env.AZURE_SPEECH_REGION || '').toLowerCase().replace(/\s+/g, '');
+const AZ_VOICE = process.env.AZURE_VOICE || 'ar-SA-HamedNeural', AZ_RATE = process.env.AZURE_RATE || '+0%', AZ_PITCH = process.env.AZURE_PITCH || '+0%';
+const AZ_BASE = process.env.AZURE_TTS_BASE || `https://${AZ_REGION}.tts.speech.microsoft.com`;
+const EL_KEY = process.env.ELEVENLABS_API_KEY || '', EL_VOICE = process.env.ELEVENLABS_VOICE_ID || '', EL_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_flash_v2_5';
+const EL_BASE = process.env.ELEVENLABS_BASE || 'https://api.elevenlabs.io';
+const TTS_PROVIDER = (process.env.TTS_PROVIDER || (AZ_KEY && AZ_REGION ? 'azure' : EL_KEY && EL_VOICE ? 'elevenlabs' : 'openai')).toLowerCase();
+const xml = (t) => String(t).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
+function ttsRequest(provider, text, pcm, signal) {       // يرجع { r, rate } حيث rate تردد الـ PCM الخام
+  if (provider === 'azure') {
+    const lang = AZ_VOICE.split('-').slice(0, 2).join('-');
+    return fetch(`${AZ_BASE}/cognitiveservices/v1`, {
+      method: 'POST',
+      headers: { 'Ocp-Apim-Subscription-Key': AZ_KEY, 'Content-Type': 'application/ssml+xml', 'User-Agent': 'nazih-kiosk',
+        'X-Microsoft-OutputFormat': pcm ? 'raw-16khz-16bit-mono-pcm' : 'audio-24khz-96kbitrate-mono-mp3' },
+      body: `<speak version='1.0' xml:lang='${lang}'><voice name='${AZ_VOICE}'><prosody rate='${xml(AZ_RATE)}' pitch='${xml(AZ_PITCH)}'>${xml(text)}</prosody></voice></speak>`,
+      signal,
+    }).then((r) => ({ r, rate: 16000 }));
+  }
+  if (provider === 'elevenlabs') {
+    const body = { text, model_id: EL_MODEL };
+    if (/v2_5|v3|v4/.test(EL_MODEL)) body.language_code = 'ar';
+    return fetch(`${EL_BASE}/v1/text-to-speech/${encodeURIComponent(EL_VOICE)}/stream?output_format=${pcm ? 'pcm_16000' : 'mp3_44100_128'}`, {
+      method: 'POST', headers: { 'xi-api-key': EL_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+    }).then((r) => ({ r, rate: 16000 }));
+  }
+  const payload = { model: TTS_MODEL, voice: TTS_VOICE, input: text, response_format: pcm ? 'pcm' : 'mp3' };
+  if (TTS_MODEL.includes('gpt-4o')) payload.instructions = TTS_INSTRUCTIONS;      // نموذج gpt-4o-mini-tts يقبل تعليمات لطريقة الأداء
+  return fetch(`${OPENAI_BASE}/audio/speech`, {
+    method: 'POST', headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal,
+  }).then((r) => ({ r, rate: 24000 }));
+}
+let ttsWarned = 0;
+async function ttsFetch(text, pcm, signal) {
+  if (TTS_PROVIDER !== 'openai') {
+    try {
+      const out = await ttsRequest(TTS_PROVIDER, text, pcm, signal);
+      if (out.r.ok) return { ...out, provider: TTS_PROVIDER };
+      const why = await out.r.text().catch(() => '');
+      if (ttsWarned++ < 20) console.warn(`TTS ${TTS_PROVIDER} ${out.r.status}: ${why.slice(0, 200)} — using OpenAI voice for this clip`);
+    } catch (e) { if (e.name === 'AbortError') throw e; if (ttsWarned++ < 20) console.warn(`TTS ${TTS_PROVIDER}: ${e.message} — using OpenAI voice`); }
+  }
+  return { ...(await ttsRequest('openai', text, pcm, signal)), provider: 'openai' };
+}
+
 async function handleTTS(req, res) {
   if (needKey(res)) return;
   const { text } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
@@ -231,23 +280,11 @@ async function handleTTS(req, res) {
   const key = String(text).slice(0, 1500);
   const cached = TTS_CACHE.get(key);
   if (cached) { TTS_CACHE.delete(key); TTS_CACHE.set(key, cached); return sendAudio(res, cached, true); }
-  const payload = {
-    model: TTS_MODEL, voice: TTS_VOICE, input: String(text).slice(0, 1500), response_format: 'mp3',
-  };
-  // نموذج gpt-4o-mini-tts يقبل تعليمات لطريقة الأداء
-  if (TTS_MODEL.includes('gpt-4o')) {
-    payload.instructions = TTS_INSTRUCTIONS;
-  }
-  const r = await fetch(`${OPENAI_BASE}/audio/speech`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    signal: withTimeout(30_000),
-  });
+  const { r, provider } = await ttsFetch(key, false, withTimeout(30_000));
   if (!r.ok) { const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length < TTS_CACHE_MAX / 4) {
-    TTS_CACHE.set(key, buf); ttsBytes += buf.length;
+    if (provider === TTS_PROVIDER) { TTS_CACHE.set(key, buf); ttsBytes += buf.length; }       // لا نحفظ الصوت الاحتياطي حتى يعود الصوت الأصلي حين يتعافى المزوّد
     while (ttsBytes > TTS_CACHE_MAX) { const [k, v] = TTS_CACHE.entries().next().value; TTS_CACHE.delete(k); ttsBytes -= v.length; }
   }
   sendAudio(res, buf, false);
@@ -255,6 +292,7 @@ async function handleTTS(req, res) {
 
 /* صوت متدفق للوجه الحي: يُرسل إلى المتصفح أول بأول وهو يتولّد (PCM16 أحادي 16 كيلوهرتز، الصيغة التي يطلبها Simli)،
    فيبدأ نزيه الكلام بعد جزء من الثانية بدل انتظار المقطع كاملاً. المقطع يُحفظ بعد أول مرة مثل ‎/api/tts‎. */
+const TTS_GAIN_OTHER = Number(process.env.TTS_GAIN || 1.25);   // أصوات Azure و ElevenLabs تصل أعلى من OpenAI
 const TTS_GAIN = Number(process.env.TTS_GAIN || 1.6);            // تكبير الصوت (1 = كما يصل من المزوّد)
 function makeResampler(ratio, gain) {                             // ratio = تردد الدخل ÷ تردد الخرج (24000/16000 = 1.5)
   let carry = Buffer.alloc(0), pos = 0;
@@ -279,22 +317,19 @@ async function handleTTSPcm(req, res) {
   const key = String(text).slice(0, 1500);
   const head = { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Sample-Rate': '16000' };
   const cached = PCM_CACHE.get(key);
-  if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); res.writeHead(200, { ...head, 'Content-Length': cached.length, 'X-Cache': 'hit' }); return res.end(cached); }
-  const payload = { model: TTS_MODEL, voice: TTS_VOICE, input: key, response_format: 'pcm' };      // PCM خام 24 كيلوهرتز
-  if (TTS_MODEL.includes('gpt-4o')) payload.instructions = TTS_INSTRUCTIONS;
+  if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); res.writeHead(200, { ...head, 'Content-Length': cached.length, 'X-Cache': 'hit', 'X-TTS': TTS_PROVIDER }); return res.end(cached); }
   const ac = new AbortController(); const killer = setTimeout(() => ac.abort(), 40_000);
   res.on('close', () => { clearTimeout(killer); if (!res.writableEnded) ac.abort(); });
-  let r;
-  try {
-    r = await fetch(`${OPENAI_BASE}/audio/speech`, { method: 'POST', headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal });
-  } catch (e) { clearTimeout(killer); if (!res.headersSent && !res.destroyed) sendJSON(res, 504, { error: 'تأخر الصوت' }); return; }
+  let r, rate, provider;
+  try { ({ r, rate, provider } = await ttsFetch(key, true, ac.signal)); }
+  catch (e) { clearTimeout(killer); if (!res.headersSent && !res.destroyed) sendJSON(res, 504, { error: 'تأخر الصوت' }); return; }
   if (!r.ok) { clearTimeout(killer); const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
-  res.writeHead(200, { ...head, 'X-Cache': 'miss', 'X-Accel-Buffering': 'no' });
-  const rs = makeResampler(1.5, TTS_GAIN), parts = []; let ok = true;
+  res.writeHead(200, { ...head, 'X-Cache': 'miss', 'X-Accel-Buffering': 'no', 'X-TTS': provider });
+  const rs = makeResampler(rate / 16000, provider === 'openai' ? TTS_GAIN : TTS_GAIN_OTHER), parts = []; let ok = true;
   try { for await (const chunk of r.body) { const out = rs(Buffer.from(chunk)); if (out.length) { parts.push(Buffer.from(out)); res.write(out); } } }
   catch (e) { ok = false; if (e.name !== 'AbortError') console.warn('tts-pcm:', e.message); }
   clearTimeout(killer); res.end();
-  if (ok && parts.length) {
+  if (ok && parts.length && provider === TTS_PROVIDER) {
     const buf = Buffer.concat(parts);
     if (buf.length < TTS_CACHE_MAX / 4) {
       PCM_CACHE.set(key, buf); pcmBytes += buf.length;
@@ -419,5 +454,6 @@ http.createServer(async (req, res) => {
 }).listen(PORT, () => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
   console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
+  console.log(`🔊 الصوت: ${TTS_PROVIDER}${TTS_PROVIDER === 'azure' ? ` (${AZ_VOICE} @ ${AZ_REGION})` : TTS_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ` (${TTS_VOICE})`}`);
   if (!API_KEY) console.log('⚠️  لم يتم ضبط OPENAI_API_KEY — الموقع سيعمل لكن المساعد سيرد بإجابات محلية محدودة فقط.');
 });

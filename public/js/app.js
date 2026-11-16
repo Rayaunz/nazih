@@ -522,7 +522,7 @@ const T = { marks: {}, mark(k) { if (DEBUG && !(k in this.marks)) { this.marks[k
     let el = document.getElementById('dbg');
     if (!el) { el = document.createElement('div'); el.id = 'dbg'; el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.78);color:#9f9;font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;direction:ltr;text-align:left;white-space:pre'; document.body.appendChild(el); }
     const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-');
-    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
+    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
   } };
 
 /* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
@@ -785,6 +785,7 @@ function makeSimliAvatar(own) {
         try { r = await pcmFetch(input); pcmPending.delete(input); } catch {}
         if (my !== token) return;
         if (!r || !r.ok || !r.body || !client) return own.functions.speak({ input });
+        if (DEBUG) { T.voice = r.headers.get('x-tts') || ''; }
         const reader = r.body.getReader(); let carry = null, total = 0, t0 = 0;
         try {
           for (;;) {
