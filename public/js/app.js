@@ -7,7 +7,7 @@ const CONFIG = {
   avatarImage: 'assets/avatar.jpg',
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
   maxRecordSeconds: 25,
-  silenceMs: 1500,             // يوقف التسجيل تلقائياً بعد هذا الصمت
+  silenceMs: 1200,             // يوقف التسجيل تلقائياً بعد هذا الصمت
   handsFree: true,             // true: نزيه يسمع تلقائياً بدون ضغط زر. false: لازم ضغط زر التحدث. (يمكن التبديل من الرابط: ‎?mic=auto‎ أو ‎?mic=button‎)
   autoMinLevel: 0.045,         // أقل مستوى صوت يُعتبر كلاماً في الاستماع التلقائي (ارفعه في الأماكن المزعجة)
   autoMinSpeechMs: 450,        // أقصر كلام يُقبل (يتجاهل الطقطقة والأصوات القصيرة)
@@ -546,17 +546,18 @@ function findBank(text) { const n = norm(text); return BANK.find((b) => norm(b.q
  *  البحث في الأنظمة (محلياً داخل الموقع)
  * ========================================================= */
 const LAW_ALIASES = {
-  basic: ['الاساسي للحكم', 'نظام الحكم', 'النظام الاساسي'], shura: ['الشوري'], regions: ['المناطق'], cabinet: ['مجلس الوزراء'], bayah: ['البيعه'],
-  nazaha: ['هيئه الرقابه', 'نظام نزاهه', 'نظام الهيئه', 'نظام مكافحه الفساد'], bribery: ['الرشوه'], protect: ['المبلغين', 'الشهود'], aml: ['غسل الاموال', 'غسيل الاموال'],
-  forgery: ['التزوير'], discipline: ['الانضباط'], civil: ['الخدمه المدنيه'],
+  basic: ['اساسي للحكم', 'نظام الحكم', 'النظام الاساسي'], shura: ['شوري'], regions: ['نظام المناطق', 'مناطق المملكه', 'امير المنطقه', 'امراء المناطق'], cabinet: ['مجلس الوزراء'], bayah: ['بيعه'],
+  nazaha: ['هيئه الرقابه', 'نظام نزاهه', 'نظام الهيئه', 'نظام مكافحه الفساد'], bribery: ['رشوه', 'رشاوي', 'راشي', 'مرتشي'], protect: ['مبلغين', 'حمايه المبلغ', 'الشهود', 'حمايه الشاهد'], aml: ['غسل الاموال', 'غسيل الاموال', 'غسل اموال', 'غسيل اموال'],
+  forgery: ['تزوير', 'مزور', 'محرر رسمي', 'محرر عرفي'], discipline: ['انضباط'], civil: ['خدمه المدنيه', 'خدمه مدنيه'],
 };
 const textLaws = () => (window.LAWS || []).filter((l) => !l.pages && l.id !== 'forgery-old');
 let lastLawId = null;
-function detectLaw(n) {
-  for (const [id, keys] of Object.entries(LAW_ALIASES)) if (keys.some((k) => n.includes(k))) return id;
-  const extra = textLaws().find((l) => l.id.startsWith('extra-') && n.includes(norm(l.name).split(' ').slice(0, 3).join(' ')));
-  return extra ? extra.id : null;
+function detectLaws(n) {                     // كل الأنظمة المذكورة في السؤال (قد يسأل الزائر عن أكثر من نظام)
+  const ids = Object.entries(LAW_ALIASES).filter(([, keys]) => keys.some((k) => n.includes(k))).map(([id]) => id);
+  for (const l of textLaws()) if (l.id.startsWith('extra-') && n.includes(norm(l.name).split(' ').slice(0, 3).join(' '))) ids.push(l.id);
+  return ids;
 }
+function detectLaw(n) { return detectLaws(n)[0] || null; }
 /* تحويل «الثامنة» / «الحادية والعشرون» / «12» إلى رقم */
 const NUM_WORDS = [['عشرون', 20], ['عشرين', 20], ['ثلاثون', 30], ['ثلاثين', 30], ['اربعون', 40], ['اربعين', 40], ['خمسون', 50], ['خمسين', 50], ['ستون', 60], ['ستين', 60], ['سبعون', 70], ['سبعين', 70], ['ثمانون', 80], ['ثمانين', 80], ['تسعون', 90], ['تسعين', 90],
   ['حادي', 1], ['احدي', 1], ['احد', 1], ['واحد', 1], ['اثن', 2], ['ثلاث', 3], ['اربع', 4], ['خمس', 5], ['ست', 6], ['سبع', 7], ['ثمان', 8], ['تسع', 9], ['اول', 1], ['ثاني', 2], ['ثالث', 3], ['رابع', 4], ['خامس', 5], ['سادس', 6], ['سابع', 7], ['ثامن', 8], ['تاسع', 9], ['عاشر', 10]];
@@ -594,25 +595,34 @@ function buildIndex() {
 }
 function retrieveContext(text) {
   if (!LAW_INDEX) buildIndex();
-  const n = norm(text), lawId = detectLaw(n); if (lawId) lastLawId = lawId;
+  const n = norm(text), lawIds = detectLaws(n); if (lawIds.length) lastLawId = lawIds[0];
   const terms = [...new Set(n.replace(/[^ء-ي0-9\s]/g, ' ').split(/\s+/).map((w) => w.replace(/^(وال|بال|لل|ال|و)/, '')).map((w) => (w.length > 5 ? w.replace(/(ات|ين|ون)$/, '') : w)).filter((w) => w.length > 2 && !STOP.has(w)))];
-  // إذا ذُكر نظام بعينه وكان قصيراً يُرسل كاملاً، فيجد الذكاء الاصطناعي المادة المطلوبة أياً كانت صياغة السؤال
-  const named = lawId && textLaws().find((l) => l.id === lawId);
-  if (named) {
-    const whole = named.articles.map((a) => `【${named.name} — ${a.title}】\n${a.body}\n\n`).join('');
-    if (whole.length <= 13000) return whole;
+  // إذا ذُكر نظام واحد بعينه وكان قصيراً يُرسل كاملاً، فيجد الذكاء الاصطناعي المادة المطلوبة أياً كانت صياغة السؤال
+  if (lawIds.length === 1) {
+    const named = textLaws().find((l) => l.id === lawIds[0]);
+    const whole = named ? named.articles.map((a) => `【${named.name} — ${a.title}】\n${a.body}\n\n`).join('') : '';
+    if (whole && whole.length <= 11000) return whole;
   }
-  if (!terms.length) return '';
-  const scored = LAW_INDEX.map((e) => {
+  if (!terms.length && !lawIds.length) return '';
+  const all = LAW_INDEX.map((e) => {
     let sc = 0;
     for (const tm of terms) { const c = e.n.split(tm).length - 1; if (c) sc += Math.min(c, 3) * (tm.length > 4 ? 2 : 1); }
-    if (sc && lawId && e.law.id === lawId) sc += 6;
+    if (sc && lawIds.includes(e.law.id)) sc += 6;
     return { e, sc };
-  }).filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 10);
-  let out = '';
-  for (const { e } of scored) {
-    const block = `【${e.law.name} — ${e.a.title}】\n${e.a.body.slice(0, 1800)}\n\n`;
-    if (out.length + block.length > 12000) break;
+  });
+  const picked = [];
+  // لكل نظام مذكور: أفضل ثلاث مواد مطابقة + مادته الأولى (غالباً التعريفات)، حتى لا يضيع جزء من سؤال متعدد
+  for (const id of lawIds) {
+    const mine = all.filter((x) => x.e.law.id === id);
+    if (mine[0]) picked.push(mine[0]);
+    picked.push(...mine.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 3));
+  }
+  picked.push(...all.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 8));
+  let out = ''; const seen = new Set();
+  for (const { e } of picked) {
+    if (seen.has(e)) continue; seen.add(e);
+    const block = `【${e.law.name} — ${e.a.title}】\n${e.a.body.slice(0, 1600)}\n\n`;
+    if (out.length + block.length > 10000) break;
     out += block;
   }
   return out;
@@ -649,9 +659,10 @@ async function ask(text, item = null) {
           full += dec.decode(value, { stream: true });
           const ans = full.split('§')[0];
           if (!sp) {
-            const m = /[.؟?!\n]/.exec(ans.slice(25));
-            if (m && full.length > 25 + m.index + 1) {
-              spoken = 25 + m.index + 1;
+            const m1 = /[.؟?!\n]/.exec(ans.slice(18)), m2 = /[،؛:]/.exec(ans.slice(45));
+            const cut = Math.min(m1 ? 18 + m1.index + 1 : Infinity, m2 ? 45 + m2.index + 1 : Infinity);
+            if (cut < full.length) {
+              spoken = cut;
               T.mark('firstText'); stopSpeaking(); sp = makeSpeaker(); sp.push(ans.slice(0, spoken)); streamed = sp;
             }
           }
@@ -788,7 +799,7 @@ async function startRecording() {
   catch { setStatus('لم أستطع الوصول للمايك — اسمح للمتصفح باستخدامه', 'err'); return; }
 
   const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
-  const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const recorder = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
   const chunks = [];
   const src = audioCtx.createMediaStreamSource(stream);
   const micAnalyser = audioCtx.createAnalyser(); micAnalyser.fftSize = 512; src.connect(micAnalyser);
@@ -874,7 +885,7 @@ async function startAutoListen() {
   };
   const begin = (now) => {
     chunks = []; const mine = chunks;
-    rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
     rec.ondataavailable = (e) => e.data.size && mine.push(e.data);
     rec.start(); startedAt = now; lastLoud = now; loudMs = 0;
     ensureDidConnected();                                    // جهّز الأفتار أثناء كلام الزائر
