@@ -7,7 +7,10 @@ const CONFIG = {
   avatarImage: 'assets/avatar.jpg',
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
   maxRecordSeconds: 25,
-  silenceMs: 1800,             // يوقف التسجيل تلقائياً بعد هذا الصمت
+  silenceMs: 1500,             // يوقف التسجيل تلقائياً بعد هذا الصمت
+  handsFree: true,             // true: نزيه يسمع تلقائياً بدون ضغط زر. false: لازم ضغط زر التحدث. (يمكن التبديل من الرابط: ‎?mic=auto‎ أو ‎?mic=button‎)
+  autoMinLevel: 0.045,         // أقل مستوى صوت يُعتبر كلاماً في الاستماع التلقائي (ارفعه في الأماكن المزعجة)
+  autoMinSpeechMs: 450,        // أقصر كلام يُقبل (يتجاهل الطقطقة والأصوات القصيرة)
   showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
   idleStatus: 'اضغط للتحدث',
@@ -91,6 +94,12 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const params = new URLSearchParams(location.search);
 const app = $('#app');
 const TEST = params.get('test');
+try {
+  const m = params.get('mic');
+  if (m === 'auto' || m === 'button') localStorage.setItem('nazih.mic', m);
+  const saved = localStorage.getItem('nazih.mic');
+  if (saved) CONFIG.handsFree = saved === 'auto';
+} catch {}
 const buzz = (ms = 10) => { try { navigator.vibrate?.(ms); } catch {} };
 /* توحيد الحروف العربية للمقارنة: بدون تشكيل، والهمزات ألف، والتاء المربوطة هاء */
 const norm = (s) => String(s || '').replace(/[ً-ْـ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').toLowerCase();
@@ -325,7 +334,7 @@ function initDID() {
         api.events?.on('connection', () => { if (CONFIG.ownBrain) muteDid(); else if (CONFIG.pushToTalk) setMic(false); });
         api.events?.on('error', ({ error }) => console.warn('D-ID:', error));
       } catch (e) { console.warn(e); }
-      if (CONFIG.ownBrain) { document.body.classList.add('ptt'); muteDid(); setInterval(muteDid, 4000); }
+      if (CONFIG.ownBrain) { document.body.classList.add('ptt'); muteDid(); setInterval(muteDid, 4000); setStatus(CONFIG.idleStatus); if (CONFIG.handsFree) startAutoListen(); }
       else if (CONFIG.pushToTalk) { document.body.classList.add('ptt'); setMic(false); setTimeout(() => setMic(micOpen), 3000); }
     } else if (performance.now() - started > CONFIG.didWaitSeconds * 1000) clearInterval(timer);
   }, 300);
@@ -333,6 +342,7 @@ function initDID() {
 
 /* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
 let didTalking = false;
+const pttIdleLabel = () => (autoMic && audioCtx?.state === 'running' ? 'تكلّم مباشرة.. أنا أسمعك' : CONFIG.handsFree ? 'المس الشاشة لتفعيل الاستماع' : 'اضغط للتحدث');
 function muteDid() { try { Promise.resolve(did?.functions.toggleMicState(true)).catch(() => {}); } catch {} }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitDidDone(len) {            // ينتظر حتى ينتهي نزيه من نطق المقطع
@@ -364,24 +374,39 @@ function setMic(open) {
 const ttsCache = new Map();   // الإجابات الجاهزة تُحفظ بعد أول نطق فتصير فورية
 let speakSeq = 0;
 function stopSpeaking() {
-  speakSeq++;
+  speakSeq++; if (speakingNow) { speakingNow = false; lastSpokeAt = performance.now(); }
   if (did) { try { Promise.resolve(did.functions.interrupt()).catch(() => {}); } catch {} return; }
   if (currentSrc) { try { currentSrc.stop(); } catch {} currentSrc = null; }
   if (window.speechSynthesis) speechSynthesis.cancel();
   setTalking(false);
 }
+/* طابور النطق عبر D-ID: يسمح بنطق أول جملة فور وصولها ثم بقية الرد */
+let speakingNow = false, lastSpokeAt = 0;
+function makeSpeaker() {
+  const my = ++speakSeq, q = []; let done = false, wake = null;
+  const run = (async () => {
+    speakingNow = true;
+    try {
+      for (;;) {
+        if (my !== speakSeq) break;                         // قوطع بسؤال جديد
+        if (!q.length) { if (done) break; await new Promise((r) => { wake = r; }); continue; }
+        const part = q.shift();
+        await did.functions.speak({ type: 'text', input: part });
+        await waitDidDone(part.length);
+      }
+    } catch (e) { console.warn('D-ID speak:', e); setStatus('تعذّر النطق الآن — حدّث الصفحة إن استمر', 'err'); }
+    finally { if (my === speakSeq) { speakingNow = false; lastSpokeAt = performance.now(); } }
+  })();
+  const kick = () => { const w = wake; wake = null; if (w) w(); };
+  return { push(t) { t = (t || '').trim(); if (t) { q.push(t); kick(); } }, end() { done = true; kick(); return run; } };
+}
 async function speak(text) {
   stopSpeaking();
   if (did) {
     if (!text) return;
-    const my = ++speakSeq;
-    try {
-      for (const part of splitForSpeech(text)) {
-        if (my !== speakSeq) return;                       // قوطع بسؤال جديد
-        await did.functions.speak({ type: 'text', input: part });
-        await waitDidDone(part.length);
-      }
-    } catch (e) { console.warn('D-ID speak:', e); setStatus('اضغط على نزيه في الأعلى لبدء المحادثة، ثم اختر السؤال', 'err'); }
+    const sp = makeSpeaker();
+    splitForSpeech(text).forEach((x) => sp.push(x));
+    await sp.end();
     return;
   }
   if (!settings.voice || !text) return;
@@ -426,7 +451,7 @@ let history = [], busy = false, session = 0;
 function setStatus(t, cls = '') {
   const s = $('#status'); s.textContent = t; s.className = `status ${cls}`;
   clearTimeout(setStatus.timer);
-  if (did) $('#pttLabel').textContent = (cls === 'err' || t === CONFIG.idleStatus) ? 'اضغط للتحدث' : t;
+  if (did) $('#pttLabel').textContent = (cls === 'err' || t === CONFIG.idleStatus) ? pttIdleLabel() : t;
   if (did && cls === 'err') setStatus.timer = setTimeout(() => { s.className = 'status'; }, 5000);   // تنبيه مؤقت فوق الفيديو
 }
 function showCaption(q, a, thinking = false) {
@@ -546,15 +571,42 @@ async function ask(text, item = null) {
   showCaption(text, '', true);
   history.push({ role: 'user', content: text });
   setStatus('نزيه يفكر...');
-  let reply, suggestions = [], hit = item;
+  let reply, suggestions = [], hit = item, streamed = null;
   const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
   if (exact) reply = exact;
   if (!hit && !exact) {
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text) }) });
-      const data = await r.json();
-      if (!r.ok || !data.reply) throw new Error(data.error);
-      reply = data.reply; suggestions = data.suggestions || [];
+      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: !!did }) });
+      if (did && r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
+        // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
+        const reader = r.body.getReader(), dec = new TextDecoder();
+        let full = '', spoken = 0, sp = null;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (my !== session) { try { reader.cancel(); } catch {} setBusy(false); return; }
+          full += dec.decode(value, { stream: true });
+          const ans = full.split('§')[0];
+          if (!sp) {
+            const m = /[.؟?!\n]/.exec(ans.slice(25));
+            if (m && full.length > 25 + m.index + 1) {
+              spoken = 25 + m.index + 1;
+              stopSpeaking(); sp = makeSpeaker(); sp.push(ans.slice(0, spoken)); streamed = sp;
+            }
+          }
+          if (ans.trim()) showCaption(text, ans.trim());
+        }
+        const [ans, extra = ''] = full.split('§');
+        reply = ans.trim();
+        if (!reply) throw new Error('empty');
+        suggestions = extra.split('|').map((x) => x.trim().replace(/^[-•\s]+/, '')).filter((x) => x.length > 3 && x.length < 70).slice(0, 2);
+        if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; }
+        splitForSpeech(ans.slice(spoken)).forEach((x) => sp.push(x));
+      } else {
+        const data = await r.json();
+        if (!r.ok || !data.reply) throw new Error(data.error);
+        reply = data.reply; suggestions = data.suggestions || [];
+      }
     } catch (e) {
       console.warn('chat fallback:', e?.message);
       hit = findBank(text);
@@ -569,7 +621,7 @@ async function ask(text, item = null) {
   if (suggestions.length) addFollowUps(suggestions);
   if (hit?.sheet) openSheet(hit.sheet);
   setStatus(CONFIG.idleStatus);
-  await speak(reply);
+  if (streamed && !hit) await streamed.end(); else await speak(reply);
   if (my === session && !recState && !busy && !did) setStatus(CONFIG.idleStatus);
 }
 
@@ -647,7 +699,9 @@ micBtn.addEventListener('click', () => {
     buzz(15);
     if (recState) { recState.stop(); return; }
     if (busy) return;
+    const wasSpeaking = speakingNow || didTalking;
     stopSpeaking(); ensureAudio();
+    if (autoMic) { if (wasSpeaking && !autoMic.recording) { lastSpokeAt = 0; setStatus(CONFIG.idleStatus); } autoMic.toggle(); return; }
     if (navigator.mediaDevices?.getUserMedia && window.MediaRecorder) startRecording();
     else startBrowserRecognition();
     return;
@@ -689,19 +743,7 @@ async function startRecording() {
     src.disconnect(); recState = null; micLevel = 0;
     micBtn.classList.remove('listening');
     if (!heardSpeech) { setStatus('ما سمعتك، حاول مرة ثانية 😊', 'err'); return; }
-    setStatus('جاري تحويل كلامك لنص...'); setBusy(true);
-    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-    try {
-      const r = await fetch(`${CONFIG.apiBase}/api/stt`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
-      setBusy(false);
-      if (!data.text) { setStatus('ما فهمتك، حاول مرة ثانية 😊', 'err'); return; }
-      ask(data.text);
-    } catch (e) {
-      console.warn('stt:', e?.message); setBusy(false);
-      setStatus('تعذّر سماعك الآن — اختر من الأسئلة أو اكتب سؤالك 😊', 'err');
-    }
+    processSpeech(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }), false);
   };
 
   const monitor = () => {
@@ -722,6 +764,84 @@ async function startRecording() {
   setStatus('أسمعك... تكلّم الآن', 'listening');
   monitor();
 }
+
+/* تحويل التسجيل إلى نص ثم سؤال نزيه. quiet=true في الاستماع التلقائي: يتجاهل ما لا يُفهم بدون رسالة خطأ */
+const STT_NOISE = ['اشتركوا في القناه', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching'];
+async function processSpeech(blob, quiet) {
+  setStatus('جاري تحويل كلامك لنص...'); setBusy(true);
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/stt`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    setBusy(false);
+    const text = (data.text || '').trim(), n = norm(text);
+    const junk = !text || (quiet && (n.replace(/\s/g, '').length < 4 || STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 12)));
+    if (junk) { setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
+    ask(text);
+  } catch (e) {
+    console.warn('stt:', e?.message); setBusy(false);
+    setStatus(quiet ? CONFIG.idleStatus : 'تعذّر سماعك الآن — اختر من الأسئلة أو اكتب سؤالك 😊', quiet ? '' : 'err');
+  }
+}
+
+/* ---------------- الاستماع التلقائي (بدون ضغط) ----------------
+   المايك يبقى مفتوحاً للموقع فقط، ويبدأ التسجيل عند سماع كلام واضح قريب، ويتوقف بعد الصمت.
+   يتوقف عن السمع تماماً ونزيه يتكلم أو يفكر حتى لا يسمع نفسه، ويتكيّف مع ضجيج المكان. */
+let autoMic = null;
+async function startAutoListen() {
+  if (autoMic || !CONFIG.handsFree || !did || !CONFIG.ownBrain) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch { setStatus('اسمح للمتصفح باستخدام المايك، أو اضغط زر التحدث', 'err'); return; }
+  if (autoMic) { stream.getTracks().forEach((t) => t.stop()); return; }
+  ensureAudio();
+  const src = audioCtx.createMediaStreamSource(stream);
+  const an = audioCtx.createAnalyser(); an.fftSize = 512; src.connect(an);
+  const buf = new Uint8Array(an.fftSize);
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
+  let noise = 0.012, rec = null, chunks = [], loudMs = 0, lastLoud = 0, startedAt = 0, last = performance.now(), forced = false;
+  const finish = (keep) => {
+    const r = rec; if (!r) return;
+    rec = null; forced = false; micLevel = 0; micBtn.classList.remove('listening');
+    const parts = chunks; chunks = [];
+    r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), true) : null;
+    try { r.stop(); } catch {}
+    if (!keep) setStatus(CONFIG.idleStatus);
+  };
+  const begin = (now) => {
+    chunks = []; const mine = chunks;
+    rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    rec.ondataavailable = (e) => e.data.size && mine.push(e.data);
+    rec.start(); startedAt = now; lastLoud = now; loudMs = 0;
+    micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
+  };
+  const blocked = () => busy || speakingNow || didTalking || recState || document.hidden || performance.now() - lastSpokeAt < 700;
+  const timer = setInterval(() => {
+    if (audioCtx.state === 'suspended') return;
+    const now = performance.now(), dt = Math.min(200, now - last); last = now;
+    an.getByteTimeDomainData(buf);
+    let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / buf.length);
+    if (blocked()) { if (rec) finish(false); return; }
+    const thr = Math.max(CONFIG.autoMinLevel, noise * 3), loud = rms > thr;
+    noise += (rms - noise) * (loud ? 0.002 : 0.05);            // تقدير ضجيج المكان
+    if (!rec) { if (!loud) return; begin(now); }
+    micLevel += (Math.min(1, rms * 8) - micLevel) * 0.4;
+    if (loud) { loudMs += dt; lastLoud = now; }
+    if (now - lastLoud > CONFIG.silenceMs) finish(loudMs >= CONFIG.autoMinSpeechMs);
+    else if (forced && !loudMs && now - startedAt > 7000) finish(false);
+    else if (now - startedAt > CONFIG.maxRecordSeconds * 1000) finish(true);
+  }, 50);
+  autoMic = {
+    get recording() { return !!rec; },
+    toggle() { if (rec) return finish(loudMs >= 200); forced = true; begin(performance.now()); },   // ضغطة الزر: ابدأ أو أنهِ يدوياً
+    stop() { clearInterval(timer); if (rec) finish(false); stream.getTracks().forEach((t) => t.stop()); try { src.disconnect(); } catch {} autoMic = null; },
+  };
+  setStatus(CONFIG.idleStatus);
+}
+// المتصفحات تشترط لمسة واحدة من المستخدم قبل تشغيل الصوت والمايك
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && CONFIG.handsFree) { ensureAudio(); Promise.resolve(audioCtx.resume?.()).then(() => startAutoListen()).then(() => { if (!busy && !speakingNow && !didTalking && !recState && !autoMic?.recording) setStatus(CONFIG.idleStatus); }).catch(() => {}); } }, { passive: true }));
 
 // بديل: التعرف على الكلام من المتصفح
 function startBrowserRecognition() {
