@@ -1,6 +1,6 @@
 {
   "name": "nazih-anticorruption-kiosk",
-  "version": "1.9.0",
+  "version": "2.1.0",
   "description": "نزيه - المساعد الافتراضي لليوم العالمي لمكافحة الفساد - جامعة حائل",
   "main": "server.js",
   "scripts": { "start": "node server.js" },

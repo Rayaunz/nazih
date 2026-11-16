@@ -159,7 +159,7 @@ async function handleChat(req, res) {
   }
   if (stream) {
     // بثّ الرد كلمة بكلمة: المتصفح ينطق أول جملة فور وصولها بدل انتظار الرد كاملاً
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Chat': `${CHAT_MODEL} ${chatStyle || ''}`.replace(/[^\x20-\x7e]/g, '') });
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Chat': lastChat.replace(/[^\x20-\x7e]/g, '') });
     const dec = new TextDecoder(); let buf = '';
     try {
       for await (const chunk of r.body) {
@@ -189,32 +189,53 @@ async function handleChat(req, res) {
 /* النماذج تختلف في الصيغة ودرجات التفكير التي تقبلها، فنجرّب بالترتيب ونحفظ أول صيغة تنجح حتى لا نضيّع وقتاً في كل سؤال.
    الشاشة تحتاج رداً فورياً، فنبدأ بدون تفكير (none) ثم أقل درجة يقبلها النموذج. لتثبيت درجة بعينها: OPENAI_REASONING في Environment. */
 const EFFORTS = [...new Set([process.env.OPENAI_REASONING, 'none', 'minimal', 'low'].filter(Boolean))];
-const CHAT_STYLES = {
-  plain: (m) => ({ model: CHAT_MODEL, messages: m, max_completion_tokens: 2500 }),
-  classic: (m) => ({ model: CHAT_MODEL, messages: m, temperature: 0.2, max_tokens: 700 }),
-};
-for (const e of EFFORTS) CHAT_STYLES[`effort=${e}`] = (m) => ({ model: CHAT_MODEL, messages: m, max_completion_tokens: 2500, reasoning_effort: e });
-let chatStyle = null;
+/* مزوّد العقل: الافتراضي OpenAI. لتجربة نموذج من جهة أخرى لها واجهة متوافقة مع OpenAI (مثل HUMAIN Node) أضف في Environment:
+     CHAT_BASE_URL (مثل https://api.node.humain.com/v1) و CHAT_API_KEY و CHAT_MODEL (مثل humain-m3)
+   تحويل الكلام لنص والصوت يبقيان كما هما. وإذا تعذّر المزوّد البديل يجاوب نموذج OpenAI حتى لا يسكت نزيه. */
+const ALT_BASE = (process.env.CHAT_BASE_URL || '').replace(/\/+$/, ''), ALT_KEY = process.env.CHAT_API_KEY || '', ALT_MODEL = process.env.CHAT_MODEL || '';
+const CHAT_PROVIDERS = [];
+if (ALT_BASE && ALT_KEY && ALT_MODEL) CHAT_PROVIDERS.push({ name: 'alt', base: ALT_BASE, key: ALT_KEY, model: ALT_MODEL, style: null, tier: '' });
 // اختياري ومدفوع: المسار السريع من OpenAI يولّد الكلمات أسرع (OPENAI_SERVICE_TIER=priority). يُلغى تلقائياً إن لم يقبله النموذج.
-let tier = process.env.OPENAI_SERVICE_TIER || '';
-async function chatCall(messages, stream, signal) {
-  const legacy = /^(gpt-4|gpt-3|chatgpt-4)/.test(CHAT_MODEL), fast = EFFORTS.map((e) => `effort=${e}`);
-  const order = chatStyle ? [chatStyle] : legacy ? ['classic', 'plain', ...fast] : [...fast, 'plain', 'classic'];
+CHAT_PROVIDERS.push({ name: 'openai', base: OPENAI_BASE, key: API_KEY, model: CHAT_MODEL, style: null, tier: process.env.OPENAI_SERVICE_TIER || '' });
+const styleBody = (name, model, m) => name === 'classic' ? { model, messages: m, temperature: 0.2, max_tokens: 700 }
+  : name === 'plain' ? { model, messages: m, max_completion_tokens: 2500 }
+  : { model, messages: m, max_completion_tokens: 2500, reasoning_effort: name.slice(7) };
+let lastChat = '';                                   // ما استُخدم في آخر جواب (يظهر في مربع القياس)
+async function chatWith(p, messages, stream, signal) {
+  const legacy = /^(gpt-4|gpt-3|chatgpt-4)/.test(p.model), fast = EFFORTS.map((e) => `effort=${e}`);
+  const order = p.style ? [p.style] : legacy || p.name === 'alt' ? ['classic', 'plain', ...fast] : [...fast, 'plain', 'classic'];
   let r;
   for (const name of order) {
-    r = await fetch(`${OPENAI_BASE}/chat/completions`, {
+    r = await fetch(`${p.base}/chat/completions`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...CHAT_STYLES[name](messages), ...(stream ? { stream: true } : {}), ...(tier ? { service_tier: tier } : {}) }),
+      headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...styleBody(name, p.model, messages), ...(stream ? { stream: true } : {}), ...(p.tier ? { service_tier: p.tier } : {}) }),
       signal,
     });
-    if (r.status === 400 && tier) { console.log(`service_tier ${tier} rejected, continuing without it`); tier = ''; await r.arrayBuffer().catch(() => {}); return chatCall(messages, stream, signal); }
-    if (r.status !== 400) { if (r.ok && chatStyle !== name) { chatStyle = name; console.log(`chat style: ${name} (${CHAT_MODEL})`); } return r; }
-    if (chatStyle) { chatStyle = null; return chatCall(messages, stream, signal); }   // الصيغة المحفوظة لم تعد تعمل: أعد المحاولة بكل الصيغ
-    if (name !== order[order.length - 1]) { const why = await r.text().catch(() => ''); console.log(`chat style ${name} rejected: ${why.slice(0, 160).replace(/\s+/g, ' ')}`); }
+    const bad = r.status === 400 || r.status === 422;      // الصيغة غير مقبولة عند هذا النموذج: جرّب التالية
+    if (bad && p.tier) { console.log(`service_tier ${p.tier} rejected, continuing without it`); p.tier = ''; await r.arrayBuffer().catch(() => {}); return chatWith(p, messages, stream, signal); }
+    if (!bad) { if (r.ok && p.style !== name) { p.style = name; console.log(`chat style: ${name} (${p.model})`); } if (r.ok) lastChat = `${p.model} ${name}`; return r; }
+    if (p.style) { p.style = null; return chatWith(p, messages, stream, signal); }   // الصيغة المحفوظة لم تعد تعمل: أعد المحاولة بكل الصيغ
+    if (name !== order[order.length - 1]) { const why = await r.text().catch(() => ''); console.log(`chat style ${name} rejected by ${p.model}: ${why.slice(0, 160).replace(/\s+/g, ' ')}`); }
   }
   return r;
 }
+let altWarned = 0;
+async function chatCall(messages, stream, signal) {
+  for (const p of CHAT_PROVIDERS) {
+    const last = p === CHAT_PROVIDERS[CHAT_PROVIDERS.length - 1];
+    try {
+      const r = await chatWith(p, messages, stream, signal);
+      if (r.ok || last) return r;
+      const why = await r.text().catch(() => '');
+      if (altWarned++ < 30) console.warn(`chat ${p.model} ${r.status}: ${why.slice(0, 200).replace(/\s+/g, ' ')} — answering with ${CHAT_MODEL}`);
+    } catch (e) {
+      if (last || e.name === 'AbortError' || e.name === 'TimeoutError') throw e;
+      if (altWarned++ < 30) console.warn(`chat ${p.model}: ${e.message} — answering with ${CHAT_MODEL}`);
+    }
+  }
+}
+
 
 /* ذاكرة الصوت: المقطع الذي نُطق مرة (خصوصاً الإجابات الجاهزة التي يسمعها كل الزوار) يُحفظ في الخادم،
    فلا يُطلب من OpenAI مرة ثانية: أسرع للزائر وأوفر في الفاتورة. الحد الأقصى 80 ميجابايت ثم يُحذف الأقدم. */
@@ -455,5 +476,6 @@ http.createServer(async (req, res) => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
   console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
   console.log(`🔊 الصوت: ${TTS_PROVIDER}${TTS_PROVIDER === 'azure' ? ` (${AZ_VOICE} @ ${AZ_REGION})` : TTS_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ` (${TTS_VOICE})`}`);
+  console.log(`🧠 العقل: ${CHAT_PROVIDERS.map((p) => p.model).join(' ← احتياطي: ')}`);
   if (!API_KEY) console.log('⚠️  لم يتم ضبط OPENAI_API_KEY — الموقع سيعمل لكن المساعد سيرد بإجابات محلية محدودة فقط.');
 });

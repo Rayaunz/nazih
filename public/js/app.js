@@ -20,6 +20,7 @@ const CONFIG = {
   ownBrain: true,              // true: الموقع يسمع ويفهم ويبحث في الأنظمة ويجاوب، وشخصية D-ID تنطق فقط. false: الرجوع لعقل D-ID
   pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
   talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
+  waitIncomplete: true,        // إذا توقف الزائر في نص الجملة («وش الفرق بين الرشوة و...») ينتظر نزيه تكملتها بدل أن يجاوب على سؤال ناقص
   fillerAfterMs: 1100,         // بعد هذا الانتظار (ملّي ثانية) دون جواب يقول نزيه عبارة قصيرة. 0 = إيقاف
   fillers: ['أبشر، لحظة.', 'لحظة من فضلك.', 'طيب، لحظة.', 'أبشر.'],
   ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
@@ -874,7 +875,10 @@ async function speak(text) {
   stopSpeaking();
   if (!text || (!did && !settings.voice)) return;
   const sp = makeSpeaker();
-  splitForSpeech(text, speechChunk()).forEach((x) => sp.push(x));
+  // أول مقطع قصير (الجملة الأولى) ليبدأ الكلام بسرعة، ثم البقية بمقاطع أطول
+  const m = /[.؟?!،؛:\n]/.exec(text.slice(25)), cut = m ? 25 + m.index + 1 : 0;
+  if (cut && cut <= 170 && cut < text.length - 15) { sp.push(text.slice(0, cut)); splitForSpeech(text.slice(cut), speechChunk()).forEach((x) => sp.push(x)); }
+  else splitForSpeech(text, speechChunk()).forEach((x) => sp.push(x));
   await sp.end();
 }
 
@@ -909,7 +913,7 @@ let askAbort = null, ignoreTalkUntil = 0;
 function interrupt() {
   session++;
   try { askAbort?.abort(); } catch {}
-  askAbort = null;
+  askAbort = null; clearTimeout(pendingT); pendingQ = ''; pendingN = 0;
   stopSpeaking(); didTalking = false; app.classList.remove('talking'); lastSpokeAt = 0;
   ignoreTalkUntil = did?.own ? 0 : performance.now() + 1500;      // D-ID يتأخر لحظة في إيقاف الكلام: نتجاهل إشاراته خلالها
   setBusy(false); setStatus(CONFIG.idleStatus);
@@ -1255,6 +1259,9 @@ async function startRecording() {
   monitor();
 }
 
+let pendingQ = '', pendingN = 0, pendingT = null;
+/* علامات السؤال الناقص: ينتهي بنقاط، أو بحرف عطف أو جر أو أداة معلّقة */
+const DANGLING = /(?:\.{2,}|…)\s*$|(?:^|\s)(?:و|أو|او|ثم|بين|من|في|على|عن|الى|إلى|مع|وال|ال|بال|لل|وبين|ولا|لو|اذا|إذا|يعني|اللي|الذي|التي|لكن|بس)\s*$/;
 /* تحويل التسجيل إلى نص ثم سؤال نزيه. quiet=true في الاستماع التلقائي: يتجاهل ما لا يُفهم بدون رسالة خطأ */
 const STT_NOISE = ['اشتركوا في القناه', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching'];
 async function processSpeech(blob, quiet) {
@@ -1269,8 +1276,23 @@ async function processSpeech(blob, quiet) {
     T.mark('sttDone');
     const text = (data.text || '').trim(), n = norm(text);
     const junk = !text || (quiet && (n.replace(/\s/g, '').length < 4 || STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 12)));
-    if (junk) { setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
-    ask(text);
+    if (junk) { if (!pendingQ) setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
+    // سؤال انقطع في منتصفه (الزائر توقف ليفكر): نحتفظ به وننتظر التكملة، ثم نرسل الجملة كاملة
+    const full = (pendingQ ? pendingQ + (/(?:^|\s)(?:و?ال|بال|لل)$/.test(pendingQ) ? '' : ' ') : '') + text;      // «وال» + «هدية» = «والهدية»
+    clearTimeout(pendingT);
+    if (CONFIG.waitIncomplete && pendingN < 2 && DANGLING.test(full)) {
+      pendingQ = full.replace(/(?:\.{2,}|…)\s*$/, '').trim(); pendingN++;
+      showCaption(pendingQ + ' …', '');
+      setStatus('كمّل سؤالك.. أسمعك', 'listening');
+      const fire = () => {
+        if (autoMic?.recording || recState || busy) { pendingT = setTimeout(fire, 1500); return; }     // ما زال يتكلم: انتظر
+        const q = pendingQ; pendingQ = ''; pendingN = 0; if (q) ask(q);
+      };
+      pendingT = setTimeout(fire, 5000);
+      return;
+    }
+    pendingQ = ''; pendingN = 0;
+    ask(full);
   } catch (e) {
     if (my !== session) return;
     console.warn('stt:', e?.message); setBusy(false);
