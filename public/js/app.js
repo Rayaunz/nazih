@@ -7,7 +7,7 @@ const CONFIG = {
   avatarImage: 'assets/avatar.jpg',
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
   maxRecordSeconds: 25,
-  silenceMs: 1200,             // يوقف التسجيل تلقائياً بعد هذا الصمت
+  silenceMs: 900,              // يوقف التسجيل تلقائياً بعد هذا الصمت (أقل = رد أسرع، لكن قد يقطع من يتوقف ليفكر)
   handsFree: true,             // true: نزيه يسمع تلقائياً بدون ضغط زر. false: لازم ضغط زر التحدث. (يمكن التبديل من الرابط: ‎?mic=auto‎ أو ‎?mic=button‎)
   autoMinLevel: 0.045,         // أقل مستوى صوت يُعتبر كلاماً في الاستماع التلقائي (ارفعه في الأماكن المزعجة)
   bargeIn: false,              // المقاطعة بالصوت: نزيه يسكت إذا تكلم الزائر أثناء جوابه (تجريبي، فعّله بالرابط ‎?barge=1‎ وجرّبه في مكان الفعالية)
@@ -755,28 +755,50 @@ function makeSimliAvatar(own) {
     return new Uint8Array(out.buffer);
   }
   const stopTalk = () => { clearTimeout(talkT); talkT = null; };
+  const pcmPending = new Map();                       // طلبات صوت بدأت مسبقاً (المقطع التالي يُجهَّز أثناء نطق الحالي)
+  function pcmFetch(text) {
+    let p = pcmPending.get(text);
+    if (!p) {
+      p = fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      p.catch(() => {});
+      if (pcmPending.size > 12) pcmPending.delete(pcmPending.keys().next().value);
+      pcmPending.set(text, p);
+    }
+    return p;
+  }
   return {
     own: true, simli: true,
     events: own.events,
     ensure: connect,
+    prefetch(text) { if (client) pcmFetch(text); return !!client; },
     functions: {
       async speak({ input }) {
         const my = ++token;
         const ok = client ? true : await Promise.race([connect(), sleep(CONFIG.simliConnectWait * 1000).then(() => false)]);
         if (my !== token) return;
         if (!ok || !client) return own.functions.speak({ input });             // الاحتياطي: صورة نزيه وصوته
-        let buf = null;
-        try { buf = await ttsBuffer(input); } catch {}
+        // الصوت يصل متدفقاً من الخادم ويُرسل إلى Simli أول بأول، فيبدأ الكلام قبل اكتمال توليد المقطع
+        let r = null;
+        try { r = await pcmFetch(input); pcmPending.delete(input); } catch {}
         if (my !== token) return;
-        if (!buf || !client) return own.functions.speak({ input });
-        const pcm = await toPCM(buf);
-        if (my !== token) return;
-        if (!client) return own.functions.speak({ input });
-        try { for (let i = 0; i < pcm.length; i += 6000) client.sendAudioData(pcm.subarray(i, i + 6000)); }
-        catch (e) { console.warn('Simli send:', e?.message); return own.functions.speak({ input }); }
-        audio.volume = settings.volume;
-        own.emit('TALKING'); stopTalk();
-        talkT = setTimeout(() => { talkT = null; if (my === token) own.emit('IDLE'); }, buf.duration * 1000 + 150);
+        if (!r || !r.ok || !r.body || !client) return own.functions.speak({ input });
+        const reader = r.body.getReader(); let carry = null, total = 0, t0 = 0;
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (my !== token || !client) { try { reader.cancel(); } catch {} return; }
+            if (done) break;
+            let u = value;
+            if (carry) { const m = new Uint8Array(carry.length + u.length); m.set(carry); m.set(u, carry.length); u = m; carry = null; }
+            if (u.length % 2) { carry = u.slice(u.length - 1); u = u.subarray(0, u.length - 1); }   // العيّنة 2 بايت: لا نقطعها
+            for (let i = 0; i < u.length; i += 6000) client.sendAudioData(u.slice(i, i + 6000));
+            if (!total && u.length) { t0 = performance.now(); audio.volume = settings.volume; own.emit('TALKING'); stopTalk(); }
+            total += u.length;
+          }
+        } catch (e) { console.warn('Simli stream:', e?.message); }
+        if (!total) return own.functions.speak({ input });
+        const remain = (total / 32000) * 1000 - (performance.now() - t0) + 200;                     // 32000 بايت = ثانية صوت
+        stopTalk(); talkT = setTimeout(() => { talkT = null; if (my === token) own.emit('IDLE'); }, Math.max(200, remain));
       },
       interrupt() {
         token++; stopTalk();
@@ -839,7 +861,7 @@ function makeSpeaker() {
   })();
   const kick = () => { const w = wake; wake = null; if (w) w(); };
   return {
-    push(t) { t = (t || '').trim(); if (!t) return; q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2) tts(t); kick(); },
+    push(t) { t = (t || '').trim(); if (!t) return; q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2 && !did?.prefetch?.(t)) tts(t); kick(); },
     end() { done = true; kick(); return run; },
   };
 }

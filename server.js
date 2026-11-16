@@ -249,6 +249,56 @@ async function handleTTS(req, res) {
   sendAudio(res, buf, false);
 }
 
+/* صوت متدفق للوجه الحي: يُرسل إلى المتصفح أول بأول وهو يتولّد (PCM16 أحادي 16 كيلوهرتز، الصيغة التي يطلبها Simli)،
+   فيبدأ نزيه الكلام بعد جزء من الثانية بدل انتظار المقطع كاملاً. المقطع يُحفظ بعد أول مرة مثل ‎/api/tts‎. */
+const TTS_GAIN = Number(process.env.TTS_GAIN || 1.6);            // تكبير الصوت (1 = كما يصل من المزوّد)
+function makeResampler(ratio, gain) {                             // ratio = تردد الدخل ÷ تردد الخرج (24000/16000 = 1.5)
+  let carry = Buffer.alloc(0), pos = 0;
+  return (chunk) => {
+    const data = carry.length ? Buffer.concat([carry, chunk]) : chunk, n = data.length >> 1;
+    const out = Buffer.alloc((Math.ceil(n / ratio) + 2) * 2); let o = 0, p = pos;
+    while (p + 1 < n) {
+      const i = Math.floor(p), f = p - i, a = data.readInt16LE(i * 2), b = data.readInt16LE(i * 2 + 2);
+      const v = Math.tanh(((a + (b - a) * f) / 32768) * gain) * 32767;     // تكبير مع حد ناعم يمنع التشويش
+      out.writeInt16LE(Math.round(v), o); o += 2; p += ratio;
+    }
+    const k = Math.min(Math.floor(p), n);
+    carry = Buffer.from(data.subarray(k * 2)); pos = p - k;
+    return out.subarray(0, o);
+  };
+}
+const PCM_CACHE = new Map(); let pcmBytes = 0;
+async function handleTTSPcm(req, res) {
+  if (needKey(res)) return;
+  const { text } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
+  if (!text) return sendJSON(res, 400, { error: 'no text' });
+  const key = String(text).slice(0, 1500);
+  const head = { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Sample-Rate': '16000' };
+  const cached = PCM_CACHE.get(key);
+  if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); res.writeHead(200, { ...head, 'Content-Length': cached.length, 'X-Cache': 'hit' }); return res.end(cached); }
+  const payload = { model: TTS_MODEL, voice: TTS_VOICE, input: key, response_format: 'pcm' };      // PCM خام 24 كيلوهرتز
+  if (TTS_MODEL.includes('gpt-4o')) payload.instructions = TTS_INSTRUCTIONS;
+  const ac = new AbortController(); const killer = setTimeout(() => ac.abort(), 40_000);
+  res.on('close', () => { clearTimeout(killer); if (!res.writableEnded) ac.abort(); });
+  let r;
+  try {
+    r = await fetch(`${OPENAI_BASE}/audio/speech`, { method: 'POST', headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal });
+  } catch (e) { clearTimeout(killer); if (!res.headersSent && !res.destroyed) sendJSON(res, 504, { error: 'تأخر الصوت' }); return; }
+  if (!r.ok) { clearTimeout(killer); const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
+  res.writeHead(200, { ...head, 'X-Cache': 'miss', 'X-Accel-Buffering': 'no' });
+  const rs = makeResampler(1.5, TTS_GAIN), parts = []; let ok = true;
+  try { for await (const chunk of r.body) { const out = rs(Buffer.from(chunk)); if (out.length) { parts.push(Buffer.from(out)); res.write(out); } } }
+  catch (e) { ok = false; if (e.name !== 'AbortError') console.warn('tts-pcm:', e.message); }
+  clearTimeout(killer); res.end();
+  if (ok && parts.length) {
+    const buf = Buffer.concat(parts);
+    if (buf.length < TTS_CACHE_MAX / 4) {
+      PCM_CACHE.set(key, buf); pcmBytes += buf.length;
+      while (pcmBytes > TTS_CACHE_MAX) { const [k, v] = PCM_CACHE.entries().next().value; PCM_CACHE.delete(k); pcmBytes -= v.length; }
+    }
+  }
+}
+
 async function handleSTT(req, res) {
   if (needKey(res)) return;
   const audio = await readBody(req, 3 * 1024 * 1024);   // 25 ثانية صوت لا تتجاوز مئات الكيلوبايت
@@ -350,6 +400,7 @@ http.createServer(async (req, res) => {
       if (!sameSite(req)) return sendJSON(res, 403, { error: 'forbidden' });
       if (rateLimited(ip)) return sendJSON(res, 429, { error: 'طلبات كثيرة، حاول بعد قليل' });
       if (req.url.startsWith('/api/chat')) return await handleChat(req, res);
+      if (req.url.startsWith('/api/tts-pcm')) return await handleTTSPcm(req, res);
       if (req.url.startsWith('/api/tts')) return await handleTTS(req, res);
       if (req.url.startsWith('/api/stt')) return await handleSTT(req, res);
       if (req.url.startsWith('/api/simli-token')) return await handleSimliToken(req, res);
