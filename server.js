@@ -26,6 +26,14 @@ const API_KEY = process.env.OPENAI_API_KEY || '';
 const CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const TTS_MODEL = process.env.TTS_MODEL || 'gpt-4o-mini-tts';
 const TTS_VOICE = process.env.TTS_VOICE || 'onyx';
+// طريقة أداء الصوت (تُغيَّر من Environment بالمتغير TTS_INSTRUCTIONS دون تعديل الكود)
+const TTS_INSTRUCTIONS = process.env.TTS_INSTRUCTIONS || [
+  'أنت مذيع سعودي من نجد يتحدث العربية الفصحى المبسطة بنبرة سعودية واضحة.',
+  'الصوت: رجل بطبقة منخفضة ممتلئة، قوي وواضح وواثق وودود، بطاقة حاضرة وليس هامساً.',
+  'النطق: الجيم معطّشة فصيحة كما في نشرات الأخبار السعودية (وليست جيماً قاهرية)، والقاف قاف فصيحة، والثاء والذال والظاء بمخارجها الصحيحة.',
+  'لا تستخدم اللهجة المصرية ولا الشامية في النطق أو التنغيم.',
+  'الإيقاع: طبيعي غير متسرع، مع وقفة قصيرة عند الفواصل.',
+].join(' ');
 const STT_MODEL = process.env.STT_MODEL || 'gpt-4o-mini-transcribe';
 const OPENAI_BASE = process.env.OPENAI_BASE || 'https://api.openai.com/v1';
 const REASONING = process.env.OPENAI_REASONING || 'low';   // جهد التفكير للنماذج الحديثة: أقل = أسرع
@@ -224,7 +232,7 @@ async function handleTTS(req, res) {
   };
   // نموذج gpt-4o-mini-tts يقبل تعليمات لطريقة الأداء
   if (TTS_MODEL.includes('gpt-4o')) {
-    payload.instructions = 'تحدث بعربية فصحى مبسطة بلكنة سعودية خفيفة، بصوت رجل هادئ وواثق وودود، وبإيقاع طبيعي غير متسرع ومخارج حروف واضحة.';
+    payload.instructions = TTS_INSTRUCTIONS;
   }
   const r = await fetch(`${OPENAI_BASE}/audio/speech`, {
     method: 'POST',

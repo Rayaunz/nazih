@@ -43,7 +43,7 @@ if (OWN) {
   Object.assign(FACE, {
     mouthX: 1200, mouthY: 612, mouthHalfW: 72,
     jaw: { x0: 1014, x1: 1391, yBottom: 752 },
-    maxOpen: 15,
+    maxOpen: 23,
     eyes: [{ x: 1117, y: 411, rx: 45, ry: 13 }, { x: 1295, y: 416, rx: 46, ry: 13 }],
     head: { cx: 1200, cy: 442, rx: 350, ry: 395 },
     pivot: { x: 1200, y: 808 },
@@ -136,11 +136,12 @@ function saveSettings() { try { localStorage.setItem('nazih-settings', JSON.stri
 function applySettings() {
   document.body.classList.toggle('no-text', !settings.text);
   document.body.classList.toggle('big', !!settings.big);
-  if (gainNode) gainNode.gain.value = settings.volume;
+  if (gainNode) gainNode.gain.value = settings.volume * VOICE_BOOST;
   $('#setVol').value = settings.volume; $('#setVoice').checked = settings.voice; $('#setText').checked = settings.text; $('#setBig').checked = !!settings.big;
 }
 
 /* ---------------- الصوت ---------------- */
+const VOICE_BOOST = 1.8;      // تكبير صوت نزيه (1 = بدون تكبير)
 let audioCtx = null, analyser = null, gainNode = null, timeArr = null, freqArr = null, currentSrc = null;
 let talking = false, fakeTalk = false, micLevel = 0;
 
@@ -149,8 +150,11 @@ function ensureAudio() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.55;
     timeArr = new Uint8Array(analyser.fftSize); freqArr = new Uint8Array(analyser.frequencyBinCount);
-    gainNode = audioCtx.createGain(); gainNode.gain.value = settings.volume;
-    analyser.connect(gainNode); gainNode.connect(audioCtx.destination);
+    gainNode = audioCtx.createGain(); gainNode.gain.value = settings.volume * VOICE_BOOST;
+    // صوت أقوى وأوضح على سماعات الجوال والشاشة: ضاغط يساوي مستوى الكلام ثم تكبير
+    const comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -22; comp.knee.value = 14; comp.ratio.value = 5; comp.attack.value = 0.004; comp.release.value = 0.2;
+    analyser.connect(comp); comp.connect(gainNode); gainNode.connect(audioCtx.destination);
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
@@ -170,6 +174,7 @@ const HB = (() => { const h = FACE.head; const x = Math.max(0, Math.round(h.cx -
 const work = document.createElement('canvas'); work.width = HB.w; work.height = HB.h;
 const wctx = work.getContext('2d');
 const mask = document.createElement('canvas'); mask.width = HB.w; mask.height = HB.h;
+let voicePeak = 0.06;
 let mouthOpen = 0, mouthWide = 1, voiceLevel = 0, blinkT = -1, nextBlink = performance.now() + 2500, bgDrawn = false;
 
 function buildMask() {
@@ -186,7 +191,9 @@ function readVoice(t) {
     analyser.getByteTimeDomainData(timeArr);
     let s = 0; for (let i = 0; i < timeArr.length; i++) { const v = (timeArr[i] - 128) / 128; s += v * v; }
     const rms = Math.sqrt(s / timeArr.length);
-    open = Math.min(1, Math.max(0, (rms - 0.012) * 7.5));
+    // فتحة الفم نسبةً إلى أعلى مستوى في كلام نزيه نفسه، فتظهر الحركة كاملة مهما كان الصوت منخفضاً أو مرتفعاً
+    voicePeak = Math.max(voicePeak * 0.9985, rms, 0.03);
+    open = Math.min(1, Math.max(0, (rms / voicePeak - 0.1) * 1.55));
     analyser.getByteFrequencyData(freqArr);
     const hz = audioCtx.sampleRate / analyser.fftSize, band = (a, b) => { let x = 0, n = 0; for (let i = Math.round(a / hz); i < Math.round(b / hz); i++) { x += freqArr[i]; n++; } return x / (n || 1); };
     const lo = band(250, 900), hi = band(1800, 4500);
@@ -255,6 +262,14 @@ function drawFace(c, t) {
 
 /* رمش طبيعي: جلد الجفن العلوي نفسه (من الصورة) ينزل فوق العين ومعه خط الرموش، عموداً عموداً، فلا يظهر أي لون مرسوم */
 function drawLids(c, k) {
+  // في أفتار الموقع نقرأ من نسخة مؤقتة لمنطقة العينين (بعد رفع الحاجبين)، حتى لا يقرأ عمودٌ ما كتبه العمود الذي قبله
+  let src = img, ox = 0, oy = 0;
+  if (OWN && ownLayer) {
+    const top = Math.floor(Math.min(...FACE.eyes.map((e) => e.y)) - 70), hh = 110;
+    if (!lidTmp) { lidTmp = document.createElement('canvas'); lidTmp.width = BODY.w; lidTmp.height = hh; }
+    const lc = lidTmp.getContext('2d'); lc.clearRect(0, 0, BODY.w, hh); lc.drawImage(ownLayer, 0, top - BODY.y, BODY.w, hh, 0, 0, BODY.w, hh);
+    src = lidTmp; ox = BODY.x; oy = top;
+  }
   for (const e of FACE.eyes) {
     const S = e.ry * 1.15, B = Math.max(3, e.ry * 0.45);
     for (let x = Math.ceil(e.x - e.rx); x < e.x + e.rx; x++) {
@@ -262,10 +277,95 @@ function drawLids(c, k) {
       const yT = e.y - e.ry * arc, yB = e.y + e.ry * 0.85 * arc;
       const shift = k * (yB - yT) * 0.96; if (shift < 0.3) continue;
       const a = yT - S, lash = yT - B + 2;
-      c.drawImage(img, x, a, 1, lash - a, x, a, 1.5, lash - a + shift);       // جلد الجفن يتمدد للأسفل
-      c.drawImage(img, x, lash, 1, B, x, lash + shift, 1.5, B);               // خط الرموش ينزل كما هو
+      c.drawImage(src, x - ox, lash - oy, 1, B, x, lash + shift, 1.5, B);               // خط الرموش ينزل كما هو
+      c.drawImage(src, x - ox, a - oy, 1, lash - a, x, a, 1.5, lash - a + shift);       // جلد الجفن يتمدد للأسفل
     }
   }
+}
+/* رفع الحاجبين قليلاً عند التشديد في الكلام (يعطي الوجه حياة) */
+function drawBrows(c, b) {
+  if (b < 0.25) return;
+  for (const e of FACE.eyes) {
+    const y0 = e.y - 78, y1 = e.y - 46, y2 = e.y - 17, y3 = e.y - 13, R = 88;
+    for (let x = Math.ceil(e.x - R); x < e.x + R; x++) {
+      const u = (x - e.x) / R, d = b * Math.pow(Math.cos(u * Math.PI / 2), 2); if (d < 0.2) continue;
+      c.drawImage(img, x, y0, 1, y1 - y0, x, y0, 1.5, y1 - y0 - d);          // الجبهة تنضغط
+      c.drawImage(img, x, y1, 1, y2 - y1, x, y1 - d, 1.5, y2 - y1);          // الحاجب يرتفع
+      c.drawImage(img, x, y2, 1, y3 - y2, x, y2 - d, 1.5, y3 - y2 + d);      // ما تحته يتمدد
+    }
+  }
+}
+
+/* =========================================================
+ *  أفتار الموقع (v14): نزيه مفصول عن الاستديو
+ *  - assets/avatar-own.jpg  الصورة الأصلية   - assets/avatar-mask.png  قناع الشخص   - assets/avatar-bg.jpg  الاستديو بدون الشخص
+ *  الرأس كله (مع الشماغ والعقال) يميل ويومئ ويتمايل مع الكلام فوق استديو ثابت، والكتفان ثابتان،
+ *  والرقبة تنثني بينهما بسلاسة. الفم والرمش والحاجبان تتحرك داخل الوجه.
+ * ========================================================= */
+const BODY = { x: 380, y: 50, w: 1600, bottom: 960, rigid: 772, anchor: 945 };   // rigid: أسفل الذقن، anchor: مستوى الكتفين (لا حركة تحته)
+let lidTmp = null;
+let ownLayer = null, ownCtx = null, ownMask = null, ownBg = null, ownReady = false;
+let talkAmt = 0, lvlSlow = 0, emph = 0, lastOwnDraw = 0, gest = { at: 0, dur: 1, tilt: 0, nod: 0, sway: 0 }, nextGest = 0;
+function initOwn(bgImg, maskImg) {
+  const h = BODY.bottom - BODY.y;
+  ownMask = document.createElement('canvas'); ownMask.width = BODY.w; ownMask.height = h;
+  ownMask.getContext('2d').drawImage(maskImg, BODY.x, BODY.y, BODY.w, h, 0, 0, BODY.w, h);
+  ownLayer = document.createElement('canvas'); ownLayer.width = BODY.w; ownLayer.height = h;
+  ownCtx = ownLayer.getContext('2d'); ownBg = bgImg; ownReady = true;
+}
+const smooth = (v) => { v = Math.min(1, Math.max(0, v)); return v * v * (3 - 2 * v); };
+function drawOwn(t) {
+  requestAnimationFrame(drawOwn);
+  if (t - lastOwnDraw < 24) return;                       // 40 إطاراً في الثانية كحد أقصى
+  const dt = Math.min(80, t - lastOwnDraw || 16); lastOwnDraw = t;
+  readVoice(t);
+  if (!bgDrawn) { ctx.drawImage(img, 0, 0); bgDrawn = true; }
+  // --- إشارات الحركة ---
+  const speaking = talking || LOOK === '1';
+  talkAmt += ((speaking ? 1 : 0) - talkAmt) * Math.min(1, dt / 260);
+  lvlSlow += (voiceLevel - lvlSlow) * Math.min(1, dt / 900);
+  emph += (Math.max(0, voiceLevel - lvlSlow * 0.9) - emph) * Math.min(1, dt / 140);       // نبرة التشديد
+  // إيماءة عشوائية كل بضع ثوانٍ أثناء الكلام (ميل أو إيماءة أو التفاتة خفيفة) حتى لا تتكرر الحركة
+  if (speaking && t > nextGest) {
+    gest = { at: t, dur: 900 + Math.random() * 900, tilt: (Math.random() - 0.5) * 0.034, nod: (Math.random() - 0.3) * 9, sway: (Math.random() - 0.5) * 12 };
+    nextGest = t + gest.dur + 500 + Math.random() * 1800;
+  }
+  const gp = Math.min(1, (t - gest.at) / gest.dur), gk = Math.sin(gp * Math.PI) * talkAmt;  // تصعد ثم ترجع
+  const tilt = 0.0045 * Math.sin(t / 2700) + 0.002 * Math.sin(t / 1130 + 1) + talkAmt * (0.007 * Math.sin(t / 830) + 0.004 * Math.sin(t / 410 + 2)) + gk * gest.tilt;
+  const nod = 1.6 * Math.sin(t / 1900) + talkAmt * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 9 + mouthOpen * 1.5 + gk * gest.nod;
+  const sway = 2.2 * Math.sin(t / 3300) + talkAmt * 2.5 * Math.sin(t / 1500 + 1) + gk * gest.sway;
+  const zoom = 0.0025 * Math.sin(t / 2300) + talkAmt * 0.004 + emph * 0.006;
+  const brow = Math.min(3.2, emph * 9 + (gk > 0.6 ? 0.8 : 0));
+  // --- طبقة نزيه: الصورة + الوجه المتحرك، ثم القناع ---
+  const h = BODY.bottom - BODY.y;
+  ownCtx.globalCompositeOperation = 'source-over';
+  ownCtx.setTransform(1, 0, 0, 1, 0, 0);
+  ownCtx.drawImage(img, BODY.x, BODY.y, BODY.w, h, 0, 0, BODY.w, h);
+  ownCtx.setTransform(1, 0, 0, 1, -BODY.x, -BODY.y);
+  drawBrows(ownCtx, LOOK === 'brow' ? 3.2 : brow);
+  drawFace(ownCtx, t);
+  ownCtx.setTransform(1, 0, 0, 1, 0, 0);
+  ownCtx.globalCompositeOperation = 'destination-in'; ownCtx.drawImage(ownMask, 0, 0);
+  // --- التركيب: استديو نظيف ثم نزيه بحركته ---
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(ownBg, BODY.x, BODY.y, BODY.w, h, BODY.x, BODY.y, BODY.w, h);
+  const px = FACE.pivot.x, py = BODY.anchor;
+  const place = (wv) => {
+    const a = tilt * wv, sc = 1 + zoom * wv, co = Math.cos(a) * sc, si = Math.sin(a) * sc;
+    ctx.setTransform(co, si, -si, co, px + sway * wv - (co * px - si * py), py + nod * wv - (si * px + co * py));
+  };
+  const SH = 5, rigidH = BODY.rigid - BODY.y;
+  // من الأسفل إلى الأعلى حتى يغطي الرأس أي فرق بسيط عند الرقبة
+  const n = Math.ceil((BODY.bottom - BODY.rigid) / SH);
+  for (let i = n - 1; i >= 0; i--) {
+    const y = BODY.rigid + i * SH, hh = Math.min(SH + 2, BODY.bottom - y);
+    place(smooth((BODY.anchor - (y + SH / 2)) / (BODY.anchor - BODY.rigid)));
+    ctx.drawImage(ownLayer, 0, y - BODY.y, BODY.w, hh, BODY.x, y, BODY.w, hh);
+  }
+  place(1);
+  ctx.drawImage(ownLayer, 0, 0, BODY.w, rigidH + 2, BODY.x, BODY.y, BODY.w, rigidH + 2);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawWave(t);
 }
 
 // (طريقة قديمة غير مستخدمة) صورة «العين المغمضة»: جفن بلون الجلد المحيط بكل عين مع خط الرموش وحواف ناعمة
@@ -328,7 +428,13 @@ function drawFrame(t) {
   drawWave(t);
   requestAnimationFrame(drawFrame);
 }
-img.onload = () => { buildMask(); requestAnimationFrame(drawFrame); };
+if (OWN) {
+  const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  img.onload = () => { ctx.drawImage(img, 0, 0); bgDrawn = true; };          // الصورة تظهر فوراً، والحركة تبدأ حين يكتمل القناع والخلفية
+  Promise.all([new Promise((r) => img.addEventListener('load', r)), load('assets/avatar-bg.jpg'), load('assets/avatar-mask.png')])
+    .then(([, bg, mk]) => { initOwn(bg, mk); requestAnimationFrame(drawOwn); })
+    .catch((e) => { console.warn('avatar layers:', e); buildMask(); requestAnimationFrame(drawFrame); });   // تعذّر التحميل: الحركة البسيطة القديمة
+} else img.onload = () => { buildMask(); requestAnimationFrame(drawFrame); };
 img.src = CONFIG.avatarImage;
 
 /* ---------------- موجة الصوت حول المايك ---------------- */
