@@ -20,6 +20,8 @@ const CONFIG = {
   ownBrain: true,              // true: الموقع يسمع ويفهم ويبحث في الأنظمة ويجاوب، وشخصية D-ID تنطق فقط. false: الرجوع لعقل D-ID
   pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
   talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
+  fillerAfterMs: 1100,         // بعد هذا الانتظار (ملّي ثانية) دون جواب يقول نزيه عبارة قصيرة. 0 = إيقاف
+  fillers: ['أبشر، لحظة.', 'لحظة من فضلك.', 'طيب، لحظة.', 'أبشر.'],
   ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
   simliSdk: ['https://esm.sh/simli-client', 'https://cdn.jsdelivr.net/npm/simli-client/+esm'],   // مكتبة Simli للمتصفح (تُحمَّل عند الحاجة فقط)
   simliConnectWait: 9,         // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
@@ -520,7 +522,7 @@ const T = { marks: {}, mark(k) { if (DEBUG && !(k in this.marks)) { this.marks[k
     let el = document.getElementById('dbg');
     if (!el) { el = document.createElement('div'); el.id = 'dbg'; el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.78);color:#9f9;font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;direction:ltr;text-align:left;white-space:pre'; document.body.appendChild(el); }
     const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-');
-    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\navatar start : ${d('speakCall', 'talking')}\nTOTAL        : ${d('lastWord', 'talking')}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
+    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
   } };
 
 /* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
@@ -734,6 +736,7 @@ function makeSimliAvatar(own) {
         c.on?.('error', (m) => console.warn('Simli:', m));
         await c.start();
         client = c; fails = 0; audio.volume = settings.volume; setLive(true);
+        CONFIG.fillers.forEach((f) => pcmFetch(f));                      // تجهيز عبارات الانتظار مسبقاً
         if (DEBUG) { T.connect = 'simli ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
         return true;
       } catch (e) {
@@ -873,6 +876,9 @@ async function speak(text) {
   splitForSpeech(text, speechChunk()).forEach((x) => sp.push(x));
   await sp.end();
 }
+
+let fillerI = Math.floor(Math.random() * 4);
+const nextFiller = () => CONFIG.fillers[fillerI++ % CONFIG.fillers.length];
 
 /* ---------------- المحادثة ---------------- */
 const capEl = $('#caption'), capQ = $('#capQ'), capA = $('#capA'), micBtn = $('#micBtn');
@@ -1041,24 +1047,33 @@ async function ask(text, item = null) {
   const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
   if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
   if (!hit && !exact) {
+    // إذا تأخر الجواب أكثر من لحظة يقول نزيه عبارة قصيرة («أبشر، لحظة») فيحس الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع
+    let sp = null, firstSaid = false;
+    const fillT = CONFIG.fillerAfterMs > 0 && settings.voice ? setTimeout(() => {
+      if (my !== session || firstSaid || sp) return;
+      stopSpeaking(); sp = makeSpeaker(); streamed = sp; sp.push(nextFiller()); T.mark('filler');
+    }, CONFIG.fillerAfterMs) : null;
     try {
       const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: true }), signal: (askAbort = new AbortController()).signal });
       if (r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
+        if (DEBUG) T.model = r.headers.get('x-chat') || '';
         // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
         const reader = r.body.getReader(), dec = new TextDecoder();
-        let full = '', spoken = 0, sp = null;
+        let full = '', spoken = 0;
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           if (my !== session) { try { reader.cancel(); } catch {} return; }
           full += dec.decode(value, { stream: true });
           const ans = full.split('§')[0];
-          if (!sp) {
+          if (!firstSaid) {
             const m1 = /[.؟?!\n]/.exec(ans.slice(18)), m2 = /[،؛:]/.exec(ans.slice(45));
             const cut = Math.min(m1 ? 18 + m1.index + 1 : Infinity, m2 ? 45 + m2.index + 1 : Infinity);
             if (cut < full.length) {
               spoken = cut;
-              T.mark('firstText'); stopSpeaking(); sp = makeSpeaker(); sp.push(ans.slice(0, spoken)); streamed = sp;
+              T.mark('firstText'); clearTimeout(fillT); firstSaid = true;
+              if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; }
+              sp.push(ans.slice(0, spoken));
             }
           }
           if (ans.trim()) showCaption(text, ans.trim());
@@ -1067,14 +1082,17 @@ async function ask(text, item = null) {
         reply = ans.trim();
         if (!reply) throw new Error('empty');
         suggestions = extra.split('|').map((x) => x.trim().replace(/^[-•\s]+/, '')).filter((x) => x.length > 3 && x.length < 70).slice(0, 2);
+        clearTimeout(fillT); firstSaid = true;
         if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; }
         splitForSpeech(ans.slice(spoken), speechChunk()).forEach((x) => sp.push(x));
       } else {
+        clearTimeout(fillT); firstSaid = true; streamed = null;
         const data = await r.json();
         if (!r.ok || !data.reply) throw new Error(data.error);
         reply = data.reply; suggestions = data.suggestions || [];
       }
     } catch (e) {
+      clearTimeout(fillT); firstSaid = true; streamed = null;
       if (my !== session) return;                  // قوطع عمداً
       console.warn('chat fallback:', e?.message);
       hit = findBank(text);

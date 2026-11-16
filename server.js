@@ -36,7 +36,6 @@ const TTS_INSTRUCTIONS = process.env.TTS_INSTRUCTIONS || [
 ].join(' ');
 const STT_MODEL = process.env.STT_MODEL || 'gpt-4o-mini-transcribe';
 const OPENAI_BASE = process.env.OPENAI_BASE || 'https://api.openai.com/v1';
-const REASONING = process.env.OPENAI_REASONING || 'low';   // جهد التفكير للنماذج الحديثة: أقل = أسرع
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // ---------- تعليمات الشخصية ----------
@@ -160,7 +159,7 @@ async function handleChat(req, res) {
   }
   if (stream) {
     // بثّ الرد كلمة بكلمة: المتصفح ينطق أول جملة فور وصولها بدل انتظار الرد كاملاً
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Chat': `${CHAT_MODEL} ${chatStyle || ''}`.replace(/[^\x20-\x7e]/g, '') });
     const dec = new TextDecoder(); let buf = '';
     try {
       for await (const chunk of r.body) {
@@ -187,27 +186,32 @@ async function handleChat(req, res) {
   sendJSON(res, 200, { reply: answer.trim(), suggestions });
 }
 
-/* النماذج تختلف في الصيغة التي تقبلها، فنجرّب الصيغ بالترتيب ونحفظ أول صيغة تنجح حتى لا نضيّع وقتاً في كل سؤال */
+/* النماذج تختلف في الصيغة ودرجات التفكير التي تقبلها، فنجرّب بالترتيب ونحفظ أول صيغة تنجح حتى لا نضيّع وقتاً في كل سؤال.
+   الشاشة تحتاج رداً فورياً، فنبدأ بدون تفكير (none) ثم أقل درجة يقبلها النموذج. لتثبيت درجة بعينها: OPENAI_REASONING في Environment. */
+const EFFORTS = [...new Set([process.env.OPENAI_REASONING, 'none', 'minimal', 'low'].filter(Boolean))];
 const CHAT_STYLES = {
-  fast: (m) => ({ model: CHAT_MODEL, messages: m, max_completion_tokens: 2500, reasoning_effort: REASONING }),
   plain: (m) => ({ model: CHAT_MODEL, messages: m, max_completion_tokens: 2500 }),
   classic: (m) => ({ model: CHAT_MODEL, messages: m, temperature: 0.2, max_tokens: 700 }),
 };
+for (const e of EFFORTS) CHAT_STYLES[`effort=${e}`] = (m) => ({ model: CHAT_MODEL, messages: m, max_completion_tokens: 2500, reasoning_effort: e });
 let chatStyle = null;
+// اختياري ومدفوع: المسار السريع من OpenAI يولّد الكلمات أسرع (OPENAI_SERVICE_TIER=priority). يُلغى تلقائياً إن لم يقبله النموذج.
+let tier = process.env.OPENAI_SERVICE_TIER || '';
 async function chatCall(messages, stream, signal) {
-  const legacy = /^(gpt-4|gpt-3|chatgpt-4)/.test(CHAT_MODEL);
-  const order = chatStyle ? [chatStyle] : legacy ? ['classic', 'plain', 'fast'] : ['fast', 'plain', 'classic'];
+  const legacy = /^(gpt-4|gpt-3|chatgpt-4)/.test(CHAT_MODEL), fast = EFFORTS.map((e) => `effort=${e}`);
+  const order = chatStyle ? [chatStyle] : legacy ? ['classic', 'plain', ...fast] : [...fast, 'plain', 'classic'];
   let r;
   for (const name of order) {
     r = await fetch(`${OPENAI_BASE}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...CHAT_STYLES[name](messages), ...(stream ? { stream: true } : {}) }),
+      body: JSON.stringify({ ...CHAT_STYLES[name](messages), ...(stream ? { stream: true } : {}), ...(tier ? { service_tier: tier } : {}) }),
       signal,
     });
+    if (r.status === 400 && tier) { console.log(`service_tier ${tier} rejected, continuing without it`); tier = ''; await r.arrayBuffer().catch(() => {}); return chatCall(messages, stream, signal); }
     if (r.status !== 400) { if (r.ok && chatStyle !== name) { chatStyle = name; console.log(`chat style: ${name} (${CHAT_MODEL})`); } return r; }
     if (chatStyle) { chatStyle = null; return chatCall(messages, stream, signal); }   // الصيغة المحفوظة لم تعد تعمل: أعد المحاولة بكل الصيغ
-    if (name !== order[order.length - 1]) await r.arrayBuffer().catch(() => {});
+    if (name !== order[order.length - 1]) { const why = await r.text().catch(() => ''); console.log(`chat style ${name} rejected: ${why.slice(0, 160).replace(/\s+/g, ' ')}`); }
   }
   return r;
 }
