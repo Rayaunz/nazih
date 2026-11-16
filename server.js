@@ -268,6 +268,40 @@ async function handleSTT(req, res) {
   sendJSON(res, 200, { text: (data.text || '').trim() });
 }
 
+// ---------- Simli: الوجه الحي للشاشة الرئيسية ----------
+// المفتاح يبقى هنا في الخادم. المتصفح يطلب «تذكرة جلسة» قصيرة العمر فقط، ثم يتصل بها مباشرة مع Simli.
+//   SIMLI_API_KEY  : مفتاح Simli (سري)          SIMLI_FACE_ID : رقم الوجه من صفحة Your Faces
+//   SIMLI_CODE     : (اختياري) رمز للشاشة؛ إذا وُضع فلا تُفتح جلسة إلا لمن فتح الرابط ‎/?avatar=simli&code=الرمز‎
+const SIMLI_KEY = process.env.SIMLI_API_KEY || '';
+const SIMLI_FACE = process.env.SIMLI_FACE_ID || '';
+const SIMLI_CODE = process.env.SIMLI_CODE || '';
+const SIMLI_BASE = process.env.SIMLI_BASE || 'https://api.simli.ai';
+const SIMLI_IDLE = Number(process.env.SIMLI_IDLE_SECONDS || 120);       // تُقفل الجلسة بعد هذا السكوت فلا تُحسب دقائق والشاشة واقفة
+const SIMLI_MAX = Number(process.env.SIMLI_MAX_SECONDS || 1800);        // أقصى مدة للجلسة الواحدة ثم يُعاد الاتصال عند الحاجة
+async function handleSimliToken(req, res) {
+  if (!SIMLI_KEY || !SIMLI_FACE) return sendJSON(res, 503, { error: 'Simli غير مضبوط: أضف SIMLI_API_KEY و SIMLI_FACE_ID في Environment' });
+  const body = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}');
+  if (SIMLI_CODE && body.code !== SIMLI_CODE) return sendJSON(res, 403, { error: 'رمز الشاشة غير صحيح' });
+  const portrait = body.portrait === true;
+  const r = await fetch(`${SIMLI_BASE}/compose/token`, {
+    method: 'POST',
+    headers: { 'x-simli-api-key': SIMLI_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      faceId: SIMLI_FACE, handleSilence: true, maxSessionLength: SIMLI_MAX, maxIdleTime: SIMLI_IDLE,
+      streaming_width: portrait ? 720 : 1280, streaming_height: portrait ? 1280 : 720,     // الشاشة الطولية 9:16 والعرضية 16:9
+    }),
+    signal: withTimeout(20_000),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.session_token || data.session_token === 'FAIL TOKEN') {
+    const why = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data).slice(0, 300);
+    console.warn('Simli token:', r.status, why);
+    return sendJSON(res, 502, { error: why || 'Simli error' });
+  }
+  if (data.warnings?.length) console.warn('Simli warnings:', data.warnings.join(' | '));
+  sendJSON(res, 200, { session_token: data.session_token });
+}
+
 // ---------- الملفات الثابتة ----------
 const zlib = require('zlib');
 const GZ_CACHE = new Map();                       // ضغط الملفات النصية مرة واحدة ثم حفظها في الذاكرة
@@ -318,6 +352,7 @@ http.createServer(async (req, res) => {
       if (req.url.startsWith('/api/chat')) return await handleChat(req, res);
       if (req.url.startsWith('/api/tts')) return await handleTTS(req, res);
       if (req.url.startsWith('/api/stt')) return await handleSTT(req, res);
+      if (req.url.startsWith('/api/simli-token')) return await handleSimliToken(req, res);
       return sendJSON(res, 404, { error: 'not found' });
     }
     serveStatic(req, res);
@@ -328,5 +363,6 @@ http.createServer(async (req, res) => {
   }
 }).listen(PORT, () => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
+  console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
   if (!API_KEY) console.log('⚠️  لم يتم ضبط OPENAI_API_KEY — الموقع سيعمل لكن المساعد سيرد بإجابات محلية محدودة فقط.');
 });

@@ -20,6 +20,9 @@ const CONFIG = {
   ownBrain: true,              // true: الموقع يسمع ويفهم ويبحث في الأنظمة ويجاوب، وشخصية D-ID تنطق فقط. false: الرجوع لعقل D-ID
   pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
   talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
+  ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
+  simliSdk: ['https://esm.sh/simli-client', 'https://cdn.jsdelivr.net/npm/simli-client/+esm'],   // مكتبة Simli للمتصفح (تُحمَّل عند الحاجة فقط)
+  simliConnectWait: 9,         // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
   greeting: 'حياك الله! أنا نزيه. اسألني عن النزاهة ومكافحة الفساد، أو اسحب الأسئلة واختر ما يهمك، أو قل: اختبرني.',
 };
 
@@ -137,6 +140,7 @@ function applySettings() {
   document.body.classList.toggle('no-text', !settings.text);
   document.body.classList.toggle('big', !!settings.big);
   if (gainNode) gainNode.gain.value = settings.volume * VOICE_BOOST;
+  const sa = document.getElementById('simliAudio'); if (sa) sa.volume = settings.volume;
   $('#setVol').value = settings.volume; $('#setVoice').checked = settings.voice; $('#setText').checked = settings.text; $('#setBig').checked = !!settings.big;
 }
 
@@ -212,7 +216,7 @@ function readVoice(t) {
 /* يرسم الوجه (فم + رمش) داخل لوحة الرأس بإحداثيات الصورة */
 function drawFace(c, t) {
   const d = mouthOpen * FACE.maxOpen;
-  if (d > 0.35) {
+  if (d > 0.35 && (!OWN || CONFIG.ownMouth || LOOK)) {
     const { x0, x1, yBottom } = FACE.jaw, top = FACE.mouthY, mx = FACE.mouthX;
     const hw = FACE.mouthHalfW * mouthWide, spread = (x1 - x0) / 2, K = 26, U = 18;
     const drop = (x) => { const u = Math.abs(x - mx) / spread; return u >= 1 ? 0 : d * Math.pow(Math.cos(u * Math.PI / 2), 1.5); };       // نزول الفك
@@ -331,10 +335,11 @@ function drawOwn(t) {
     nextGest = t + gest.dur + 500 + Math.random() * 1800;
   }
   const gp = Math.min(1, (t - gest.at) / gest.dur), gk = Math.sin(gp * Math.PI) * talkAmt;  // تصعد ثم ترجع
-  const tilt = 0.0045 * Math.sin(t / 2700) + 0.002 * Math.sin(t / 1130 + 1) + talkAmt * (0.007 * Math.sin(t / 830) + 0.004 * Math.sin(t / 410 + 2)) + gk * gest.tilt;
-  const nod = 1.6 * Math.sin(t / 1900) + talkAmt * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 9 + mouthOpen * 1.5 + gk * gest.nod;
-  const sway = 2.2 * Math.sin(t / 3300) + talkAmt * 2.5 * Math.sin(t / 1500 + 1) + gk * gest.sway;
-  const zoom = 0.0025 * Math.sin(t / 2300) + talkAmt * 0.004 + emph * 0.006;
+  const TA = talkAmt * (CONFIG.ownMouth || LOOK ? 1 : 0.45);            // بدون تحريك الفم: حركة الرأس أهدأ
+  const tilt = 0.0045 * Math.sin(t / 2700) + 0.002 * Math.sin(t / 1130 + 1) + TA * (0.007 * Math.sin(t / 830) + 0.004 * Math.sin(t / 410 + 2)) + gk * gest.tilt;
+  const nod = 1.6 * Math.sin(t / 1900) + TA * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 9 + mouthOpen * 1.5 + gk * gest.nod;
+  const sway = 2.2 * Math.sin(t / 3300) + TA * 2.5 * Math.sin(t / 1500 + 1) + gk * gest.sway;
+  const zoom = 0.0025 * Math.sin(t / 2300) + TA * 0.004 + emph * 0.006;
   const brow = Math.min(3.2, emph * 9 + (gk > 0.6 ? 0.8 : 0));
   // --- طبقة نزيه: الصورة + الوجه المتحرك، ثم القناع ---
   const h = BODY.bottom - BODY.y;
@@ -539,6 +544,7 @@ function setDidDown(v) {
 function watchDid() { if (did && !didReconnecting) setDidDown(!!didFindButton(/reconnect/i)); }
 function ensureDidConnected() {
   if (!did) return Promise.resolve();
+  if (did.ensure) { did.ensure(); return Promise.resolve(); }      // Simli: يبدأ الاتصال في الخلفية، والنطق ينتظره
   watchDid();
   if (!didDown) return Promise.resolve();
   if (didReconnecting) return didReconnecting;
@@ -561,7 +567,7 @@ function ensureDidConnected() {
   })();
   return didReconnecting;
 }
-['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && didDown) ensureDidConnected(); }, { passive: true }));
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && (didDown || did.ensure)) ensureDidConnected(); }, { passive: true }));
 
 /* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
 let didTalking = false;
@@ -676,7 +682,7 @@ function makeOwnAvatar() {
   const subs = {}; let token = 0;
   const emit = (state) => (subs.agentActivity || []).forEach((f) => { try { f({ state }); } catch {} });
   return {
-    own: true,
+    own: true, emit,
     events: { on(ev, f) { (subs[ev] = subs[ev] || []).push(f); } },
     functions: {
       async speak({ input }) {
@@ -696,7 +702,94 @@ function makeOwnAvatar() {
     },
   };
 }
-if (OWN) window.DID_AGENTS_API = makeOwnAvatar();
+/* ---------------- وجه Simli الحي (للشاشة الرئيسية) ----------------
+   Simli وجه فقط: الموقع يجهّز الجواب والصوت كما هو، ثم يرسل الصوت إلى Simli فيرجع فيديو بشفاه مطابقة.
+   - يتصل عند أول لمسة أو كلام، ويُقفل تلقائياً بعد فترة سكوت (فلا تُستهلك الدقائق والشاشة واقفة) ثم يعود عند الحاجة.
+   - إذا تعذّر الاتصال (انتهت الدقائق، بلغ حد الجلسات، انقطاع) يكمل نزيه بصورته وصوته دون أن يسكت. */
+function makeSimliAvatar(own) {
+  const video = $('#simliVideo'), audio = $('#simliAudio');
+  let client = null, connecting = null, sdk = null, fails = 0, token = 0, talkT = null, lastFail = 0;
+  const live = () => !!client;
+  const setLive = (v) => document.body.classList.toggle('simli-live', v);
+  async function loadSdk() {
+    if (sdk) return sdk;
+    for (const url of CONFIG.simliSdk) {
+      try { const m = await import(url); if (m.SimliClient) return (sdk = m); } catch (e) { console.warn('Simli SDK:', url, e?.message); }
+    }
+    throw new Error('تعذّر تحميل مكتبة Simli');
+  }
+  function connect() {
+    if (client) return Promise.resolve(true);
+    if (connecting) return connecting;
+    if (fails >= 3 && performance.now() - lastFail < 120000) return Promise.resolve(false);     // بعد ثلاث محاولات فاشلة: استراحة دقيقتين
+    connecting = (async () => {
+      try {
+        const { SimliClient, LogLevel } = await loadSdk();
+        let code = ''; try { code = localStorage.getItem('nazih.code') || ''; } catch {}
+        const r = await fetch(`${CONFIG.apiBase}/api/simli-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portrait: innerHeight > innerWidth, code }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.session_token) throw new Error(d.error || 'token');
+        const c = new SimliClient(d.session_token, video, audio, null, LogLevel?.ERROR ?? LogLevel?.INFO);
+        c.on?.('stop', () => { if (client === c) { client = null; setLive(false); console.log('Simli: انتهت الجلسة'); } });
+        c.on?.('error', (m) => console.warn('Simli:', m));
+        await c.start();
+        client = c; fails = 0; audio.volume = settings.volume; setLive(true);
+        if (DEBUG) { T.connect = 'simli ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
+        return true;
+      } catch (e) {
+        console.warn('Simli connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false);
+        if (DEBUG) setStatus('Simli: ' + (e?.message || e), 'err');
+        return false;
+      } finally { connecting = null; }
+    })();
+    return connecting;
+  }
+  /* تحويل الصوت إلى الصيغة التي يطلبها Simli: ‏PCM16 أحادي بتردد 16 كيلوهرتز، مع رفع المستوى */
+  async function toPCM(buf) {
+    const oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, Math.max(1, Math.ceil(buf.duration * 16000)), 16000);
+    const src = oc.createBufferSource(); src.buffer = buf; src.connect(oc.destination); src.start();
+    const f = (await oc.startRendering()).getChannelData(0);
+    let peak = 0.05; for (let i = 0; i < f.length; i++) { const a = Math.abs(f[i]); if (a > peak) peak = a; }
+    const g = Math.min(3, 0.95 / peak), out = new Int16Array(f.length);
+    for (let i = 0; i < f.length; i++) out[i] = Math.max(-1, Math.min(1, f[i] * g)) * 32767;
+    return new Uint8Array(out.buffer);
+  }
+  const stopTalk = () => { clearTimeout(talkT); talkT = null; };
+  return {
+    own: true, simli: true,
+    events: own.events,
+    ensure: connect,
+    functions: {
+      async speak({ input }) {
+        const my = ++token;
+        const ok = client ? true : await Promise.race([connect(), sleep(CONFIG.simliConnectWait * 1000).then(() => false)]);
+        if (my !== token) return;
+        if (!ok || !client) return own.functions.speak({ input });             // الاحتياطي: صورة نزيه وصوته
+        let buf = null;
+        try { buf = await ttsBuffer(input); } catch {}
+        if (my !== token) return;
+        if (!buf || !client) return own.functions.speak({ input });
+        const pcm = await toPCM(buf);
+        if (my !== token) return;
+        if (!client) return own.functions.speak({ input });
+        try { for (let i = 0; i < pcm.length; i += 6000) client.sendAudioData(pcm.subarray(i, i + 6000)); }
+        catch (e) { console.warn('Simli send:', e?.message); return own.functions.speak({ input }); }
+        audio.volume = settings.volume;
+        own.emit('TALKING'); stopTalk();
+        talkT = setTimeout(() => { talkT = null; if (my === token) own.emit('IDLE'); }, buf.duration * 1000 + 150);
+      },
+      interrupt() {
+        token++; stopTalk();
+        try { client?.ClearBuffer(); } catch {}
+        own.functions.interrupt();
+      },
+      toggleMicState() {}, reconnect: connect, connect,
+    },
+    stop() { const c = client; client = null; setLive(false); try { c?.stop(); } catch {} },
+  };
+}
+if (OWN) window.DID_AGENTS_API = window.NAZIH_SIMLI ? makeSimliAvatar(makeOwnAvatar()) : makeOwnAvatar();
+window.addEventListener('pagehide', () => { try { window.DID_AGENTS_API?.stop?.(); } catch {} });
 
 /* طابور النطق: ينطق أول جملة فور وصولها ثم بقية الرد.
    مع D-ID تنطق الشخصية الحية، وبدونها (أو إذا تعطلت) صوت OpenAI مقطعاً مقطعاً مع تجهيز المقطع التالي مسبقاً. */

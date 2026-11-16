@@ -27,15 +27,22 @@
   /* شخصية نزيه:
        'own' : أفتار الموقع الخاص (صورة الاستديو يحرّكها الموقع نفسه، والصوت من خادمك). بدون D-ID وبدون اشتراكها.
        'did' : شخصية D-ID الحية كما كانت (تحتاج اشتراك D-ID).
+       'simli': وجه Simli الحي (للشاشة الرئيسية؛ يحتاج SIMLI_API_KEY و SIMLI_FACE_ID في الخادم).
+     الأنسب: اترك القيمة 'own' هنا للجوالات، وافتح على الشاشة الرئيسية مرة واحدة الرابط ‎/?avatar=simli‎ فيُحفظ فيها.
      للتجربة على جهاز واحد دون تغيير الملف: ‎/?avatar=did‎ أو ‎/?avatar=own‎ (يُحفظ في ذلك الجهاز). */
   var AVATAR = 'own';
   (function () {
     var q = new URLSearchParams(location.search), t = q.get('test'), a = q.get('avatar'), mode = AVATAR;
-    try { if (a === 'own' || a === 'did') localStorage.setItem('nazih.avatar', a); mode = localStorage.getItem('nazih.avatar') || AVATAR; } catch (e) {}
+    try {
+      if (a === 'own' || a === 'did' || a === 'simli') localStorage.setItem('nazih.avatar', a);
+      if (q.get('code')) localStorage.setItem('nazih.code', q.get('code'));
+      mode = localStorage.getItem('nazih.avatar') || AVATAR;
+    } catch (e) {}
+    window.NAZIH_SIMLI = !t && mode === 'simli';
     window.NAZIH_DID = !t && mode === 'did' || t === 'did';
     /* نعرض شكل الصفحة النهائي مع صورة نزيه فوراً */
     if (window.NAZIH_DID) document.body.className += ' did-on did-loading';
-    else if (!t) document.body.className += ' did-on own-avatar';
+    else if (!t) document.body.className += ' did-on own-avatar' + (window.NAZIH_SIMLI ? ' simli' : '');
   })();
 </script>
 <div id="app">
@@ -57,6 +64,8 @@
     </div>
     <!-- شخصية D-ID الحية تُعرض هنا (إن اشتغلت)، وإلا تبقى الصورة المتحركة أعلاه -->
     <div id="did"></div>
+    <!-- وجه Simli الحي: يظهر فوق صورة نزيه حين يتصل، ويختفي إذا انقطع فتبقى الصورة -->
+    <div id="simliBox" aria-hidden="true"><video id="simliVideo" autoplay playsinline muted></video><audio id="simliAudio" autoplay></audio></div>
     <!-- غطاء يظهر مكان نافذة «Are you still here?» عند انقطاع D-ID بسبب الخمول -->
     <div id="didCover" aria-hidden="true"><span>لحظة.. نزيه يستعد</span></div>
     <div class="talk-badge" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>

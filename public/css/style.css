@@ -319,3 +319,12 @@ body.own-avatar #cv{object-fit:cover;object-position:50% 38%}
 body.own-avatar #did,body.own-avatar #didCover{display:none!important}
 body.own-avatar .row.local-only{display:flex}
 body.did-on #caption{max-height:calc(34*var(--u))}
+
+/* ---------- v15: وجه Simli الحي فوق صورة نزيه ---------- */
+#simliBox{display:none}
+body.simli #simliBox{display:block;position:absolute;inset:0 auto 0 50%;transform:translateX(-50%);width:min(100cqi,210cqb);height:100%;z-index:3;opacity:0;transition:opacity .6s;pointer-events:none;background:#efe9e1}
+body.simli.simli-live #simliBox{opacity:1}
+#simliVideo{width:100%;height:100%;object-fit:cover;object-position:50% 30%;display:block}
+/* مؤشر «نزيه يتكلم» مع أفتار الموقع (الصورة لا تحرك الشفايف) */
+body.own-avatar .talk-badge{display:flex;z-index:6;top:auto;bottom:calc(var(--dock) + 3*var(--u));inset-inline-start:calc(4*var(--u))}
+body.simli.simli-live .talk-badge{display:none}
