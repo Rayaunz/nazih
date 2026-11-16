@@ -10,6 +10,7 @@ const CONFIG = {
   silenceMs: 1200,             // يوقف التسجيل تلقائياً بعد هذا الصمت
   handsFree: true,             // true: نزيه يسمع تلقائياً بدون ضغط زر. false: لازم ضغط زر التحدث. (يمكن التبديل من الرابط: ‎?mic=auto‎ أو ‎?mic=button‎)
   autoMinLevel: 0.045,         // أقل مستوى صوت يُعتبر كلاماً في الاستماع التلقائي (ارفعه في الأماكن المزعجة)
+  bargeIn: false,              // المقاطعة بالصوت: نزيه يسكت إذا تكلم الزائر أثناء جوابه (تجريبي، فعّله بالرابط ‎?barge=1‎ وجرّبه في مكان الفعالية)
   autoMinSpeechMs: 450,        // أقصر كلام يُقبل (يتجاهل الطقطقة والأصوات القصيرة)
   showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
@@ -99,6 +100,10 @@ try {
   if (m === 'auto' || m === 'button') localStorage.setItem('nazih.mic', m);
   const saved = localStorage.getItem('nazih.mic');
   if (saved) CONFIG.handsFree = saved === 'auto';
+  const bg = params.get('barge');
+  if (bg === '1' || bg === '0') localStorage.setItem('nazih.barge', bg);
+  const sb = localStorage.getItem('nazih.barge');
+  if (sb) CONFIG.bargeIn = sb === '1';
 } catch {}
 const buzz = (ms = 10) => { try { navigator.vibrate?.(ms); } catch {} };
 /* توحيد الحروف العربية للمقارنة: بدون تشكيل، والهمزات ألف، والتاء المربوطة هاء */
@@ -346,7 +351,7 @@ function initDID() {
       CONFIG.idleStatus = CONFIG.didStatus; setStatus(CONFIG.idleStatus);
       try {
         api.events?.on('agentActivity', ({ state }) => {
-          didTalking = state === 'TALKING'; if (didTalking) T.mark('talking');
+          didTalking = state === 'TALKING' && performance.now() > ignoreTalkUntil; if (didTalking) T.mark('talking');
           app.classList.toggle('talking', didTalking);
           if (CONFIG.ownBrain) muteDid();
           else if (CONFIG.pushToTalk && didTalking) setMic(false);      // نزيه بدأ يجاوب: يُقفل المايك
@@ -418,6 +423,13 @@ function ensureDidConnected() {
 
 /* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
 let didTalking = false;
+setInterval(() => {                         // أثناء كلام نزيه: الزر يتحول إلى «اضغط للمقاطعة»
+  if (!did) return;
+  const on = (speakingNow || didTalking) && !autoMic?.recording && !recState;
+  if (micBtn.classList.contains('stop') === on) return;
+  micBtn.classList.toggle('stop', on);
+  $('#pttLabel').textContent = on ? (CONFIG.bargeIn ? 'تكلّم أو اضغط للمقاطعة' : 'اضغط هنا للمقاطعة') : pttIdleLabel();
+}, 200);
 const pttIdleLabel = () => (autoMic && audioCtx?.state === 'running' ? 'تكلّم مباشرة.. أنا أسمعك' : CONFIG.handsFree ? 'المس الشاشة لتفعيل الاستماع' : 'اضغط للتحدث');
 function muteDid() { try { Promise.resolve(did?.functions.toggleMicState(true)).catch(() => {}); } catch {} }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -530,7 +542,7 @@ let history = [], busy = false, session = 0;
 function setStatus(t, cls = '') {
   const s = $('#status'); s.textContent = t; s.className = `status ${cls}`;
   clearTimeout(setStatus.timer);
-  if (did) $('#pttLabel').textContent = (cls === 'err' || t === CONFIG.idleStatus) ? pttIdleLabel() : t;
+  if (did && !micBtn.classList.contains('stop')) $('#pttLabel').textContent = (cls === 'err' || t === CONFIG.idleStatus) ? pttIdleLabel() : t;
   if (did && cls === 'err') setStatus.timer = setTimeout(() => { s.className = 'status'; }, 5000);   // تنبيه مؤقت فوق الفيديو
 }
 function showCaption(q, a, thinking = false) {
@@ -546,6 +558,17 @@ function showCaption(q, a, thinking = false) {
 }
 capEl.addEventListener('click', () => { if (did) capEl.classList.remove('show'); });
 function setBusy(on) { busy = on; micBtn.classList.toggle('busy', on); }
+/* مقاطعة نزيه: يوقف الكلام ويلغي الجواب الجاري، ليبدأ سؤال جديد فوراً */
+let askAbort = null, ignoreTalkUntil = 0;
+function interrupt() {
+  session++;
+  try { askAbort?.abort(); } catch {}
+  askAbort = null;
+  stopSpeaking(); didTalking = false; app.classList.remove('talking'); lastSpokeAt = 0;
+  ignoreTalkUntil = performance.now() + 1500;      // D-ID يتأخر لحظة في إيقاف الكلام: نتجاهل إشاراته خلالها
+  setBusy(false); setStatus(CONFIG.idleStatus);
+}
+const nazihActive = () => busy || speakingNow || didTalking;
 
 /* تحديد نية الزائر: يفتح الوظيفة المناسبة بدل الجواب النصي */
 function detectIntent(text) {
@@ -650,7 +673,8 @@ function retrieveContext(text) {
 
 async function ask(text, item = null) {
   text = (text || '').trim();
-  if (!text || busy) return;
+  if (!text) return;
+  if (nazihActive()) interrupt();                // سؤال جديد أثناء الجواب: يقطع القديم
   const my = session;
   stopSpeaking(); closeSheets();
   const intent = item ? null : detectIntent(text);
@@ -667,7 +691,7 @@ async function ask(text, item = null) {
   if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
   if (!hit && !exact) {
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: !!did }) });
+      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: !!did }), signal: (askAbort = new AbortController()).signal });
       if (did && r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
         // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
         const reader = r.body.getReader(), dec = new TextDecoder();
@@ -675,7 +699,7 @@ async function ask(text, item = null) {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (my !== session) { try { reader.cancel(); } catch {} setBusy(false); return; }
+          if (my !== session) { try { reader.cancel(); } catch {} return; }
           full += dec.decode(value, { stream: true });
           const ans = full.split('§')[0];
           if (!sp) {
@@ -700,6 +724,7 @@ async function ask(text, item = null) {
         reply = data.reply; suggestions = data.suggestions || [];
       }
     } catch (e) {
+      if (my !== session) return;                  // قوطع عمداً
       console.warn('chat fallback:', e?.message);
       hit = findBank(text);
       reply = hit ? hit.a : 'سؤال جميل! أنا الآن أعمل بالوضع المحدود، فاختر من الأسئلة الجاهزة أمامك، أو جرّب «اختبر نفسك».';
@@ -790,10 +815,9 @@ micBtn.addEventListener('click', () => {
   if (did && CONFIG.ownBrain) {               // عقل الموقع: الزر يسجّل سؤال الزائر ثم يتوقف تلقائياً عند الصمت
     buzz(15);
     if (recState) { recState.stop(); return; }
-    if (busy) return;
-    const wasSpeaking = speakingNow || didTalking;
-    stopSpeaking(); ensureAudio();
-    if (autoMic) { if (wasSpeaking && !autoMic.recording) { lastSpokeAt = 0; setStatus(CONFIG.idleStatus); } autoMic.toggle(); return; }
+    ensureAudio();
+    if (nazihActive()) interrupt();              // ضغطة أثناء الجواب: يسكت نزيه ويسمع السؤال الجديد
+    if (autoMic) { autoMic.toggle(); return; }
     if (navigator.mediaDevices?.getUserMedia && window.MediaRecorder) startRecording();
     else startBrowserRecognition();
     return;
@@ -861,17 +885,20 @@ async function startRecording() {
 const STT_NOISE = ['اشتركوا في القناه', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching'];
 async function processSpeech(blob, quiet) {
   setStatus('جاري تحويل كلامك لنص...'); setBusy(true);
+  const my = session;
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/stt`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error);
     setBusy(false);
+    if (my !== session) return;
     T.mark('sttDone');
     const text = (data.text || '').trim(), n = norm(text);
     const junk = !text || (quiet && (n.replace(/\s/g, '').length < 4 || STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 12)));
     if (junk) { setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
     ask(text);
   } catch (e) {
+    if (my !== session) return;
     console.warn('stt:', e?.message); setBusy(false);
     setStatus(quiet ? CONFIG.idleStatus : 'تعذّر سماعك الآن — اختر من الأسئلة أو اكتب سؤالك 😊', quiet ? '' : 'err');
   }
@@ -893,11 +920,11 @@ async function startAutoListen() {
   const an = audioCtx.createAnalyser(); an.fftSize = 512; src.connect(an);
   const buf = new Uint8Array(an.fftSize);
   const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
-  let noise = 0.012, rec = null, chunks = [], loudMs = 0, lastLoud = 0, startedAt = 0, last = performance.now(), forced = false;
+  let noise = 0.012, rec = null, chunks = [], loudMs = 0, lastLoud = 0, startedAt = 0, last = performance.now(), forced = false, barge = false;
   const finish = (keep) => {
     const r = rec; if (!r) return;
     if (keep) { T.reset(); T.marks.lastWord = lastLoud; T.mark('recEnd'); }
-    rec = null; forced = false; micLevel = 0; micBtn.classList.remove('listening');
+    rec = null; forced = false; barge = false; micLevel = 0; micBtn.classList.remove('listening');
     const parts = chunks; chunks = [];
     r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), true) : null;
     try { r.stop(); } catch {}
@@ -908,6 +935,7 @@ async function startAutoListen() {
     rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
     rec.ondataavailable = (e) => e.data.size && mine.push(e.data);
     rec.start(); startedAt = now; lastLoud = now; loudMs = 0;
+    if (barge) return;                                       // تسجيل صامت أثناء كلام نزيه (مقاطعة محتملة)
     ensureDidConnected();                                    // جهّز الأفتار أثناء كلام الزائر
     micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
   };
@@ -918,6 +946,19 @@ async function startAutoListen() {
     an.getByteTimeDomainData(buf);
     let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / buf.length);
+    if (CONFIG.bargeIn && (speakingNow || didTalking) && !recState && !document.hidden) {
+      // المقاطعة بالصوت: يلزم صوت قريب وواضح (أعلى بكثير من صوت نزيه المرتد من السماعة) لنصف ثانية متصلة تقريباً
+      const loudB = rms > Math.max(0.10, noise * 5);
+      if (!rec) { if (loudB) { barge = true; begin(now); } return; }
+      if (barge) {
+        if (loudB) { loudMs += dt; lastLoud = now; }
+        if (loudMs >= 500) {
+          barge = false; interrupt();
+          micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
+        } else if (now - lastLoud > 400) finish(false);
+        return;
+      }
+    }
     if (blocked()) { if (rec) finish(false); return; }
     const thr = Math.max(CONFIG.autoMinLevel, noise * 3), loud = rms > thr;
     noise += (rms - noise) * (loud ? 0.002 : 0.05);            // تقدير ضجيج المكان

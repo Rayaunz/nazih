@@ -289,3 +289,5 @@ body.did-on.did-loading #didCover,body.did-on.did-down #didCover{display:flex;al
 body.did-reconnecting #didCover span{opacity:.75}
 
 #didCover{transition:opacity .35s}
+
+.mic-btn.stop{background:#b3261e;border-color:#fff;color:#fff}
