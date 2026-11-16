@@ -12,11 +12,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="نزيه">
 <title>نزيه | اليوم العالمي لمكافحة الفساد — جامعة حائل</title>
+<!-- تسريع اتصال الأفتار: فتح الاتصال بخوادم D-ID وتحميل ملفها وصورة نزيه من أول لحظة -->
+<link rel="preconnect" href="https://agent.d-id.com" crossorigin>
+<link rel="preconnect" href="https://api.d-id.com" crossorigin>
+<link rel="modulepreload" href="https://agent.d-id.com/v2/index.js" crossorigin>
+<link rel="preload" as="image" href="assets/avatar-full.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- الخط يُحمّل دون أن يؤخر ظهور الصفحة -->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<script>
+  /* نعرض شكل الصفحة النهائي مع صورة نزيه فوراً، ثم يظهر الأفتار الحي فوقها حين يتصل */
+  (function () { var t = new URLSearchParams(location.search).get('test'); if (!t || t === 'did') document.body.className += ' did-on did-loading'; })();
+</script>
 <div id="app">
 
   <!-- ====== العنوان ====== -->
@@ -37,7 +48,7 @@
     <!-- شخصية D-ID الحية تُعرض هنا (إن اشتغلت)، وإلا تبقى الصورة المتحركة أعلاه -->
     <div id="did"></div>
     <!-- غطاء يظهر مكان نافذة «Are you still here?» عند انقطاع D-ID بسبب الخمول -->
-    <div id="didCover" aria-hidden="true"><span>تكلّم أو المس الشاشة للبدء</span></div>
+    <div id="didCover" aria-hidden="true"><span>لحظة.. نزيه يستعد</span></div>
     <div class="talk-badge" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
 

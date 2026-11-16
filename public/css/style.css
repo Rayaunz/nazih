@@ -284,6 +284,8 @@ dialog .primary{font-size:17px;padding:13px}
 
 /* غطاء انقطاع D-ID: صورة نزيه الثابتة بدل رسالة إعادة الاتصال */
 #didCover{display:none}
-body.did-on.did-down #didCover{display:flex;align-items:flex-end;justify-content:center;position:absolute;inset:0 auto 0 50%;transform:translateX(-50%);width:min(100cqi,210cqb);height:100%;z-index:3;background:#efe9e1 url(../assets/avatar-full.jpg) center/cover no-repeat}
+body.did-on.did-loading #didCover,body.did-on.did-down #didCover{display:flex;align-items:flex-end;justify-content:center;position:absolute;inset:0 auto 0 50%;transform:translateX(-50%);width:min(100cqi,210cqb);height:100%;z-index:3;background:#efe9e1 url(../assets/avatar-full.jpg) center/cover no-repeat}
 #didCover span{margin-bottom:calc(var(--dock) + 26*var(--u));padding:calc(1.6*var(--u)) calc(4*var(--u));border-radius:999px;background:rgba(255,255,255,.88);color:#1d5c3a;font-weight:600;font-size:calc(3.4*var(--u));box-shadow:0 calc(.6*var(--u)) calc(2.4*var(--u)) rgba(0,0,0,.18)}
 body.did-reconnecting #didCover span{opacity:.75}
+
+#didCover{transition:opacity .35s}
