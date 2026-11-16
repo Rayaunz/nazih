@@ -12,11 +12,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="نزيه">
 <title>نزيه | اليوم العالمي لمكافحة الفساد — جامعة حائل</title>
-<!-- تسريع اتصال الأفتار: فتح الاتصال بخوادم D-ID وتحميل ملفها وصورة نزيه من أول لحظة -->
-<link rel="preconnect" href="https://agent.d-id.com" crossorigin>
-<link rel="preconnect" href="https://api.d-id.com" crossorigin>
-<link rel="modulepreload" href="https://agent.d-id.com/v2/index.js" crossorigin>
-<link rel="preload" as="image" href="assets/avatar-full.jpg">
+<!-- صورة نزيه تُحمّل من أول لحظة -->
+<link rel="preload" as="image" href="assets/avatar-own.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- الخط يُحمّل دون أن يؤخر ظهور الصفحة -->
@@ -25,8 +22,19 @@
 </head>
 <body>
 <script>
-  /* نعرض شكل الصفحة النهائي مع صورة نزيه فوراً، ثم يظهر الأفتار الحي فوقها حين يتصل */
-  (function () { var t = new URLSearchParams(location.search).get('test'); if (!t || t === 'did') document.body.className += ' did-on did-loading'; })();
+  /* شخصية نزيه:
+       'own' : أفتار الموقع الخاص (صورة الاستديو يحرّكها الموقع نفسه، والصوت من خادمك). بدون D-ID وبدون اشتراكها.
+       'did' : شخصية D-ID الحية كما كانت (تحتاج اشتراك D-ID).
+     للتجربة على جهاز واحد دون تغيير الملف: ‎/?avatar=did‎ أو ‎/?avatar=own‎ (يُحفظ في ذلك الجهاز). */
+  var AVATAR = 'own';
+  (function () {
+    var q = new URLSearchParams(location.search), t = q.get('test'), a = q.get('avatar'), mode = AVATAR;
+    try { if (a === 'own' || a === 'did') localStorage.setItem('nazih.avatar', a); mode = localStorage.getItem('nazih.avatar') || AVATAR; } catch (e) {}
+    window.NAZIH_DID = !t && mode === 'did' || t === 'did';
+    /* نعرض شكل الصفحة النهائي مع صورة نزيه فوراً */
+    if (window.NAZIH_DID) document.body.className += ' did-on did-loading';
+    else if (!t) document.body.className += ' did-on own-avatar';
+  })();
 </script>
 <div id="app">
 
@@ -82,7 +90,8 @@
         <input id="textInput" type="text" placeholder="اكتب سؤالك هنا .." autocomplete="off" enterkeyhint="send" aria-label="اكتب سؤالك">
         <button type="submit" aria-label="إرسال"><svg viewBox="0 0 24 24"><path d="M3 11.500 21 3l-6.500 18-3-7.500z"/></svg></button>
       </form>
-      <button id="settingsBtn" class="settings-btn glass"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.400 13a7.600 7.600 0 0 0 0-2l2-1.500-2-3.500-2.400 1a7.600 7.600 0 0 0-1.700-1L15 3.500h-4l-.300 2.500a7.600 7.600 0 0 0-1.700 1l-2.400-1-2 3.500 2 1.500a7.600 7.600 0 0 0 0 2l-2 1.500 2 3.500 2.400-1a7.600 7.600 0 0 0 1.700 1l.300 2.500h4l.300-2.500a7.600 7.600 0 0 0 1.700-1l2.400 1 2-3.500z"/></svg><span>الإعدادات</span></button>
+      <button id="kbBtn" class="settings-btn glass" aria-label="اكتب سؤالك"><svg viewBox="0 0 24 24"><rect x="2.500" y="6" width="19" height="12" rx="2.500"/><path d="M6.500 10h.01M10 10h.01M13.500 10h.01M17 10h.01M7.500 14h9"/></svg></button>
+      <button id="settingsBtn" class="settings-btn glass" aria-label="الإعدادات"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.400 13a7.600 7.600 0 0 0 0-2l2-1.500-2-3.500-2.400 1a7.600 7.600 0 0 0-1.700-1L15 3.500h-4l-.300 2.500a7.600 7.600 0 0 0-1.700 1l-2.400-1-2 3.500 2 1.500a7.600 7.600 0 0 0 0 2l-2 1.500 2 3.500 2.400-1a7.600 7.600 0 0 0 1.700 1l.300 2.500h4l.300-2.500a7.600 7.600 0 0 0 1.700-1l2.400 1 2-3.500z"/></svg><span>الإعدادات</span></button>
     </div>
 
     <!-- ====== اللوحات (تفتح فوق الجزء السفلي والشخصية تبقى ظاهرة) ====== -->
@@ -169,19 +178,9 @@
      لإيقافها والرجوع للصورة المتحركة: احذف وسم script التالي كاملاً.
      data-auto-connect="true" يبدأ الاتصال تلقائياً عند فتح الصفحة (احذف السطر للرجوع لزر START CALL).
      لتغيير الوكيل: غيّر data-client-key و data-agent-id (والنطاق يُضاف في Allowed domains عند D-ID). -->
-<script type="module"
-      src="https://agent.d-id.com/v2/index.js"
-      data-mode="full"
-      data-target-id="did"
-      data-client-key="ck_ZfFd2gZRan1oRPrmC9TnG"
-      data-agent-id="v2_agt_qFiur3BQ"
-      data-name="did-agent"
-      data-monitor="true"
-      data-light-mode="true"
-      data-orientation="horizontal"
-      data-show-agent-name="false"
-      data-auto-connect="true"
-      data-speech-silence-timeout-ms="1800">
+<script>
+  /* الوسم يُكتب في الصفحة فقط إذا كان الأفتار الحي مفعّلاً لهذا الجهاز (انظر AVATAR في أعلى الصفحة) */
+  if (window.NAZIH_DID) document.write('<script type="module" src="https://agent.d-id.com/v2/index.js" data-mode="full" data-target-id="did" data-client-key="ck_ZfFd2gZRan1oRPrmC9TnG" data-agent-id="v2_agt_qFiur3BQ" data-name="did-agent" data-monitor="true" data-light-mode="true" data-orientation="horizontal" data-show-agent-name="false" data-auto-connect="true" data-speech-silence-timeout-ms="1800"> <\/script>');
 </script>
 
 <script src="js/law-data.js"></script>

@@ -35,6 +35,23 @@ const FACE = {
   pivot: { x: 1196, y: 760 },  // نقطة ارتكاز حركة الرأس (الرقبة)
 };
 
+/* أفتار الموقع الخاص: صورة الاستديو كاملة (assets/avatar-own.jpg بمقاس 2322×1306) تملأ الشاشة،
+   والموقع نفسه يحرّك الفم والعينين والرأس مع الصوت. لا يحتاج أي خدمة خارجية للشخصية.
+   لو غيّرت الصورة: احفظها بنفس المقاس وعدّل هذه الإحداثيات ثم جرّب ‎/?look=open‎ و ‎/?look=blink‎ */
+const OWN = document.body.classList.contains('own-avatar');
+if (OWN) {
+  Object.assign(FACE, {
+    mouthX: 1200, mouthY: 612, mouthHalfW: 72,
+    jaw: { x0: 1014, x1: 1391, yBottom: 752 },
+    maxOpen: 15,
+    eyes: [{ x: 1117, y: 411, rx: 45, ry: 13 }, { x: 1295, y: 416, rx: 46, ry: 13 }],
+    head: { cx: 1200, cy: 442, rx: 350, ry: 395 },
+    pivot: { x: 1200, y: 808 },
+  });
+  CONFIG.avatarImage = 'assets/avatar-own.jpg';
+  const c = document.getElementById('cv'); c.width = 2322; c.height = 1306;
+}
+
 /* ---------------- بنك الأسئلة المتحركة ----------------
    q: نص السؤال | a: الجواب الجاهز (يُنطق مباشرة فيكون سريعاً ودقيقاً) | k: كلمات تدل عليه لو كتبه الزائر بصيغته */
 const BANK = [
@@ -95,6 +112,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const params = new URLSearchParams(location.search);
 const app = $('#app');
 const TEST = params.get('test');
+const LOOK = params.get('look') || TEST;      // ‎?look=open‎ / ‎?look=blink‎ / ‎?look=1‎ لمعاينة حركة الوجه مع بقاء شكل الصفحة النهائي
 try {
   const m = params.get('mic');
   if (m === 'auto' || m === 'button') localStorage.setItem('nazih.mic', m);
@@ -174,11 +192,11 @@ function readVoice(t) {
     const lo = band(250, 900), hi = band(1800, 4500);
     wide = 0.8 + Math.min(1, (hi / (lo + hi + 1)) * 2.4) * 0.34;      // 0.80 (مضموم) … 1.14 (مفتوح عريض)
     level = Math.min(1, rms * 6);
-  } else if (fakeTalk || TEST === '1') {
+  } else if (fakeTalk || LOOK === '1') {
     open = (Math.sin(t / 95) * 0.5 + 0.5) * (Math.sin(t / 640) > -0.35 ? 1 : 0) * (0.55 + 0.45 * Math.sin(t / 233));
     wide = 0.95 + 0.17 * Math.sin(t / 410); level = open * 0.7;
   }
-  if (TEST === 'open') { open = 1; wide = 1; }
+  if (LOOK === 'open') { open = 1; wide = 1; }
   voiceLevel += (level - voiceLevel) * 0.4;
   mouthOpen += (open - mouthOpen) * (open > mouthOpen ? 0.5 : 0.28);
   mouthWide += (wide - mouthWide) * 0.25;
@@ -230,11 +248,27 @@ function drawFace(c, t) {
   if (t > nextBlink && blinkT < 0) blinkT = t;
   let k = 0;
   if (blinkT >= 0) { const p = (t - blinkT) / 180; k = p < 0.5 ? p * 2 : 2 - p * 2; if (p >= 1) { blinkT = -1; nextBlink = t + 2200 + Math.random() * 3800; k = 0; } }
-  if (TEST === 'blink') k = 1;
-  if (k > 0.03) { c.globalAlpha = Math.min(1, k * 1.25); for (const e of eyePatches) c.drawImage(e.cv, e.x, e.y); c.globalAlpha = 1; }
+  if (LOOK === 'blink') k = 1;
+  if (LOOK === 'half') k = 0.5;
+  if (k > 0.03) drawLids(c, k);
 }
 
-// صورة «العين المغمضة»: جفن بلون الجلد المحيط بكل عين مع خط الرموش وحواف ناعمة
+/* رمش طبيعي: جلد الجفن العلوي نفسه (من الصورة) ينزل فوق العين ومعه خط الرموش، عموداً عموداً، فلا يظهر أي لون مرسوم */
+function drawLids(c, k) {
+  for (const e of FACE.eyes) {
+    const S = e.ry * 1.15, B = Math.max(3, e.ry * 0.45);
+    for (let x = Math.ceil(e.x - e.rx); x < e.x + e.rx; x++) {
+      const u = (x - e.x) / e.rx, arc = Math.sqrt(Math.max(0, 1 - u * u));
+      const yT = e.y - e.ry * arc, yB = e.y + e.ry * 0.85 * arc;
+      const shift = k * (yB - yT) * 0.96; if (shift < 0.3) continue;
+      const a = yT - S, lash = yT - B + 2;
+      c.drawImage(img, x, a, 1, lash - a, x, a, 1.5, lash - a + shift);       // جلد الجفن يتمدد للأسفل
+      c.drawImage(img, x, lash, 1, B, x, lash + shift, 1.5, B);               // خط الرموش ينزل كما هو
+    }
+  }
+}
+
+// (طريقة قديمة غير مستخدمة) صورة «العين المغمضة»: جفن بلون الجلد المحيط بكل عين مع خط الرموش وحواف ناعمة
 let eyePatches = [];
 function buildEyePatches() {
   const tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H;
@@ -271,7 +305,9 @@ function buildEyePatches() {
 
 function drawFrame(t) {
   readVoice(t);
-  ctx.drawImage(img, 0, 0);                         // الاستديو: ثابت لا يتحرك
+  // الاستديو ثابت لا يتحرك: يُرسم كاملاً مرة واحدة، ثم يُعاد رسم منطقة الرأس فقط في كل إطار (أخف على الجوالات)
+  if (!bgDrawn) { ctx.drawImage(img, 0, 0); bgDrawn = true; }
+  else { const m = 10, x = Math.max(0, HB.x - m), y = Math.max(0, HB.y - m), w = Math.min(W - x, HB.w + 2 * m), h = Math.min(H - y, HB.h + 2 * m); ctx.drawImage(img, x, y, w, h, x, y, w, h); }
   // لوحة الرأس
   wctx.globalCompositeOperation = 'source-over';
   wctx.clearRect(0, 0, HB.w, HB.h);
@@ -292,7 +328,7 @@ function drawFrame(t) {
   drawWave(t);
   requestAnimationFrame(drawFrame);
 }
-img.onload = () => { buildMask(); try { buildEyePatches(); } catch (e) { console.warn(e); } requestAnimationFrame(drawFrame); };
+img.onload = () => { buildMask(); requestAnimationFrame(drawFrame); };
 img.src = CONFIG.avatarImage;
 
 /* ---------------- موجة الصوت حول المايك ---------------- */
@@ -337,7 +373,7 @@ function didLoaded() {
 }
 function initDID() {
   const noDid = () => { document.body.classList.remove('did-on', 'did-loading'); };
-  if (TEST && TEST !== 'did') return noDid();
+  if ((TEST && TEST !== 'did') || (!OWN && window.NAZIH_DID === false)) return noDid();
   const started = performance.now();
   const timer = setInterval(() => {
     const api = window.DID_AGENTS_API;
@@ -459,7 +495,7 @@ function setMic(open) {
 }
 
 /* ---------------- النطق ---------------- */
-const ttsCache = new Map();   // الإجابات الجاهزة تُحفظ بعد أول نطق فتصير فورية
+const ttsCache = new Map();   // المقاطع المنطوقة تُحفظ فتصير الإجابات الجاهزة فورية في المرة التالية
 let speakSeq = 0;
 function stopSpeaking() {
   speakSeq++; if (speakingNow) { speakingNow = false; lastSpokeAt = performance.now(); }
@@ -468,71 +504,153 @@ function stopSpeaking() {
   if (window.speechSynthesis) speechSynthesis.cancel();
   setTalking(false);
 }
-/* طابور النطق عبر D-ID: يسمح بنطق أول جملة فور وصولها ثم بقية الرد */
+
+/* إذا تعطلت شخصية D-ID أثناء العمل (انتهاء الرصيد، بلوغ حد الجلسات المتزامنة، انقطاع لا يعود):
+   يتحول الموقع فوراً إلى الصورة المتحركة وصوت OpenAI بدل أن يبقى نزيه ساكتاً.
+   الشاشة تعيد تحميل نفسها عند أول فترة خمول لتحاول استرجاع الأفتار الحي. */
+const IDLE_STATUS_LOCAL = CONFIG.idleStatus;
+let didDropped = false;
+function dropDid(why) {
+  if (!did) return;
+  console.warn('D-ID متوقف، التحويل للصوت الاحتياطي:', why || '');
+  try { Promise.resolve(did.functions.interrupt()).catch(() => {}); } catch {}
+  did = null; didDropped = true; didTalking = false; didDown = false;
+  try { autoMic?.stop(); } catch {}
+  document.body.classList.remove('did-on', 'did-loading', 'did-down', 'did-reconnecting', 'ptt', 'typing');
+  app.classList.remove('talking'); micBtn.classList.remove('stop', 'listening');
+  clearTimeout(showCaption.timer); capEl.classList.add('show');
+  CONFIG.idleStatus = IDLE_STATUS_LOCAL; $('#pttLabel').textContent = CONFIG.idleStatus;
+  applySettings(); setStatus(CONFIG.idleStatus);
+}
+
+/* صوت OpenAI لمقطع واحد (يُحفظ بعد أول مرة) */
+function ttsBuffer(text) {            // الطلب نفسه لا يتكرر: من يطلب المقطع أثناء تحميله ينتظر التحميل الجاري
+  ensureAudio();
+  let p = ttsCache.get(text);
+  if (p) return p;
+  p = (async () => {
+    const r = await fetch(`${CONFIG.apiBase}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error('tts');
+    return audioCtx.decodeAudioData(await r.arrayBuffer());
+  })();
+  p.catch(() => { if (ttsCache.get(text) === p) ttsCache.delete(text); });
+  if (ttsCache.size > 80) ttsCache.delete(ttsCache.keys().next().value);
+  ttsCache.set(text, p);
+  return p;
+}
+function playBuffer(buf) {
+  return new Promise((res) => {
+    const src = audioCtx.createBufferSource(); src.buffer = buf; src.connect(analyser);
+    currentSrc = src; setTalking(true);
+    if (!did) setStatus('نزيه يتكلم... (اضغط المايك للمقاطعة)');
+    src.onended = () => { if (currentSrc === src) currentSrc = null; res(); };
+    src.start();
+  });
+}
+function browserSpeak(text) {       // بديل أخير: صوت المتصفح مع حركة فم تقريبية
+  if (!window.speechSynthesis) return Promise.resolve();
+  return new Promise((res) => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ar-SA'; u.volume = settings.volume;
+    const v = speechSynthesis.getVoices().find((x) => x.lang?.startsWith('ar'));
+    if (v) u.voice = v;
+    const done = () => { clearTimeout(guard); res(); };
+    const guard = setTimeout(done, 4000 + text.length * 120);
+    u.onstart = () => { setTalking(true, true); setStatus('نزيه يتكلم... (اضغط المايك للمقاطعة)'); };
+    u.onend = u.onerror = done;
+    speechSynthesis.speak(u);
+  });
+}
+
+/* ---------------- أفتار الموقع الخاص ----------------
+   يقدّم للموقع نفس الواجهة التي كانت تقدمها D-ID (speak / interrupt / إشارة «يتكلم»)،
+   فيبقى كل شيء كما هو: الشاشة الكاملة، الاستماع التلقائي، المقاطعة، بثّ الجواب جملة جملة.
+   الصوت من ‎/api/tts‎ (OpenAI عبر خادمك)، وحركة الفم من تحليل الصوت نفسه. */
+function makeOwnAvatar() {
+  const subs = {}; let token = 0;
+  const emit = (state) => (subs.agentActivity || []).forEach((f) => { try { f({ state }); } catch {} });
+  return {
+    own: true,
+    events: { on(ev, f) { (subs[ev] = subs[ev] || []).push(f); } },
+    functions: {
+      async speak({ input }) {
+        const my = ++token; let buf = null;
+        try { buf = await ttsBuffer(input); } catch {}
+        if (my !== token) return;
+        emit('TALKING');
+        (buf ? playBuffer(buf) : browserSpeak(input)).then(() => { if (my === token) { setTalking(false); emit('IDLE'); } });
+      },
+      interrupt() {
+        token++;
+        if (currentSrc) { try { currentSrc.stop(); } catch {} currentSrc = null; }
+        if (window.speechSynthesis) speechSynthesis.cancel();
+        setTalking(false); emit('IDLE');
+      },
+      toggleMicState() {}, reconnect() {}, connect() {},
+    },
+  };
+}
+if (OWN) window.DID_AGENTS_API = makeOwnAvatar();
+
+/* طابور النطق: ينطق أول جملة فور وصولها ثم بقية الرد.
+   مع D-ID تنطق الشخصية الحية، وبدونها (أو إذا تعطلت) صوت OpenAI مقطعاً مقطعاً مع تجهيز المقطع التالي مسبقاً. */
 let speakingNow = false, lastSpokeAt = 0;
 function makeSpeaker() {
-  const my = ++speakSeq, q = []; let done = false, wake = null;
+  const my = ++speakSeq, q = [], pre = new Map(); let done = false, wake = null, cur = null;
+  const live = () => my === speakSeq;
+  const tts = (t) => { if (!pre.has(t)) { const p = ttsBuffer(t); p.catch(() => {}); pre.set(t, p); } return pre.get(t); };
+  const next = async () => { for (;;) { if (!live()) return null; if (q.length) return q.shift(); if (done) return null; await new Promise((r) => { wake = r; }); } };
   const run = (async () => {
     speakingNow = true;
     try {
-      for (;;) {
-        if (my !== speakSeq) break;                         // قوطع بسؤال جديد
-        if (!q.length) { if (done) break; await new Promise((r) => { wake = r; }); continue; }
-        const part = q.shift();
-        await ensureDidConnected();
-        if (my !== speakSeq) break;
-        T.mark('speakCall');
-        await did.functions.speak({ type: 'text', input: part });
-        await waitDidDone(part.length);
+      // ---- شخصية D-ID ----
+      while (did) {
+        if (cur === null) cur = await next();
+        if (cur === null) return;
+        if (did.own && !settings.voice) { cur = null; continue; }
+        let ok = false, err = null;
+        for (let attempt = 0; attempt < 2 && !ok && live() && did; attempt++) {     // محاولة ثانية قبل اعتبار D-ID متعطلاً
+          try {
+            await ensureDidConnected();
+            if (!live()) return;
+            if (didDown) throw new Error('not connected');
+            T.mark('speakCall');
+            await Promise.race([did.functions.speak({ type: 'text', input: cur }), sleep(20000).then(() => { throw new Error('speak timeout'); })]);
+            ok = true;
+          } catch (e) { err = e; if (live() && attempt === 0) await sleep(800); }
+        }
+        if (!live()) return;
+        if (!ok) { dropDid(err?.message); break; }                 // cur يبقى ليُنطق بالصوت الاحتياطي
+        await waitDidDone(cur.length); cur = null;
       }
-    } catch (e) { console.warn('D-ID speak:', e); setStatus('تعذّر النطق الآن — حدّث الصفحة إن استمر', 'err'); }
-    finally { if (my === speakSeq) { speakingNow = false; lastSpokeAt = performance.now(); } }
+      // ---- الصوت الاحتياطي (OpenAI ثم صوت المتصفح) ----
+      for (;;) {
+        if (cur === null) cur = await next();
+        if (cur === null || !live()) return;
+        const text = cur; cur = null;
+        if (!settings.voice) continue;
+        let buf = null;
+        try { buf = await tts(text); } catch {}
+        if (!live()) return;
+        if (q[0]) tts(q[0]);                                       // جهّز المقطع التالي أثناء نطق الحالي
+        await (buf ? playBuffer(buf) : browserSpeak(text));
+      }
+    } catch (e) { console.warn('speak:', e); }
+    finally { if (live()) { speakingNow = false; lastSpokeAt = performance.now(); if (!did) setTalking(false); resetIdle(); } }
   })();
   const kick = () => { const w = wake; wake = null; if (w) w(); };
-  return { push(t) { t = (t || '').trim(); if (t) { q.push(t); kick(); } }, end() { done = true; kick(); return run; } };
+  return {
+    push(t) { t = (t || '').trim(); if (!t) return; q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2) tts(t); kick(); },
+    end() { done = true; kick(); return run; },
+  };
 }
+const speechChunk = () => (did && !did.own ? 700 : 320);    // مقاطع أقصر للصوت الاحتياطي حتى يبدأ النطق أسرع
 async function speak(text) {
   stopSpeaking();
-  if (did) {
-    if (!text) return;
-    const sp = makeSpeaker();
-    splitForSpeech(text).forEach((x) => sp.push(x));
-    await sp.end();
-    return;
-  }
-  if (!settings.voice || !text) return;
-  try {
-    ensureAudio();
-    let buf = ttsCache.get(text);
-    if (!buf) {
-      const r = await fetch(`${CONFIG.apiBase}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (!r.ok) throw new Error('tts');
-      buf = await audioCtx.decodeAudioData(await r.arrayBuffer());
-      if (ttsCache.size > 40) ttsCache.delete(ttsCache.keys().next().value);
-      ttsCache.set(text, buf);
-    }
-    await new Promise((res) => {
-      const src = audioCtx.createBufferSource(); src.buffer = buf; src.connect(analyser);
-      currentSrc = src; setTalking(true);
-      setStatus('نزيه يتكلم... (اضغط المايك للمقاطعة)');
-      src.onended = () => { if (currentSrc === src) { currentSrc = null; setTalking(false); } res(); };
-      src.start();
-    });
-  } catch {
-    // بديل: صوت المتصفح مع حركة فم تقريبية
-    if (!window.speechSynthesis) return;
-    await new Promise((res) => {
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ar-SA'; u.volume = settings.volume;
-      const v = speechSynthesis.getVoices().find((x) => x.lang?.startsWith('ar'));
-      if (v) u.voice = v;
-      const done = () => { setTalking(false); clearTimeout(guard); res(); };
-      const guard = setTimeout(done, 4000 + text.length * 120);
-      u.onstart = () => { setTalking(true, true); setStatus('نزيه يتكلم... (اضغط المايك للمقاطعة)'); };
-      u.onend = u.onerror = done;
-      speechSynthesis.speak(u);
-    });
-  }
+  if (!text || (!did && !settings.voice)) return;
+  const sp = makeSpeaker();
+  splitForSpeech(text, speechChunk()).forEach((x) => sp.push(x));
+  await sp.end();
 }
 
 /* ---------------- المحادثة ---------------- */
@@ -565,17 +683,23 @@ function interrupt() {
   try { askAbort?.abort(); } catch {}
   askAbort = null;
   stopSpeaking(); didTalking = false; app.classList.remove('talking'); lastSpokeAt = 0;
-  ignoreTalkUntil = performance.now() + 1500;      // D-ID يتأخر لحظة في إيقاف الكلام: نتجاهل إشاراته خلالها
+  ignoreTalkUntil = did?.own ? 0 : performance.now() + 1500;      // D-ID يتأخر لحظة في إيقاف الكلام: نتجاهل إشاراته خلالها
   setBusy(false); setStatus(CONFIG.idleStatus);
 }
 const nazihActive = () => busy || speakingNow || didTalking;
 
 /* تحديد نية الزائر: يفتح الوظيفة المناسبة بدل الجواب النصي */
 function detectIntent(text) {
-  const n = norm(text), has = (...w) => w.some((x) => n.includes(x));
-  if (has('اختبار', 'اختبرني', 'اختبر', 'مسابقه', 'كويز', 'امتحان', 'تحدي')) return 'quiz';
-  if (has('تقييم', 'قيم', 'اقيم', 'رايي في', 'نجوم')) return 'rate';
-  if (has('تصفح', 'اعرض النظام', 'نص النظام', 'مواد النظام', 'افتح الانظمه', 'الانظمه')) return 'laws';
+  // الأمر الصريح فقط يفتح اللوحة («اختبرني»، «افتح الأنظمة»، «أبي أقيّم»). أما السؤال الذي ترد فيه الكلمة عرَضاً
+  // («هل الغش في الاختبار فساد؟»، «ما القيم التي تعزز النزاهة؟») فيذهب للجواب.
+  const n = norm(text).replace(/[؟?!.,،:«»"']/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = n.split(' '), short = words.length <= 2;
+  const has = (...w) => w.some((x) => n.includes(x)), word = (...w) => w.some((x) => words.includes(x));
+  const ask = '(?:ابي|ابغي|ابغا|اريد|ودي|بغيت|نبي|عطني|اعطني|سو لي|سوي لي|افتح|افتح لي|ابدا|ابدء|شغل|ورني|اعرض|اعرض لي|خلنا نسوي|يلا)';
+  const cmd = (things) => new RegExp(`${ask} (?:ال)?(?:${things})`).test(n);
+  if (word('اختبرني', 'اختبرنا', 'كويز') || has('اختبر نفسي', 'اختبر معلوماتي', 'اختبر نفسك') || cmd('اختبار|اختبر|مسابقه|تحدي|امتحان') || (short && word('اختبار', 'الاختبار', 'اختبر', 'مسابقه', 'المسابقه', 'تحدي', 'امتحان'))) return 'quiz';
+  if (has('قيم تجربتك', 'اقيم تجربتي', 'اقيم التجربه', 'تقييم التجربه', 'تقييم تجربتي', 'اقيمك', 'ابي اقيم', 'ابغي اقيم', 'اريد ان اقيم') || cmd('تقييم|نجوم') || (short && word('تقييم', 'التقييم', 'اقيم', 'قيم', 'نجوم'))) return 'rate';
+  if (has('تصفح الانظمه', 'تصفح النظام', 'قائمه الانظمه', 'لوحه الانظمه') || cmd('انظمه|نظام|لوائح|نص النظام|مواد النظام') && !/ماده|عقوب/.test(n) && words.length <= 5 || (short && word('الانظمه', 'انظمه', 'تصفح', 'اللوائح'))) return 'laws';
   return null;
 }
 const INTENT_LINES = {
@@ -680,6 +804,7 @@ async function ask(text, item = null) {
   text = (text || '').trim();
   if (!text) return;
   if (nazihActive()) interrupt();                // سؤال جديد أثناء الجواب: يقطع القديم
+  resetIdle();                                   // السؤال بالصوت يُحسب تفاعلاً مثل اللمس
   const my = session;
   stopSpeaking(); closeSheets();
   const intent = item ? null : detectIntent(text);
@@ -696,8 +821,8 @@ async function ask(text, item = null) {
   if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
   if (!hit && !exact) {
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: !!did }), signal: (askAbort = new AbortController()).signal });
-      if (did && r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
+      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: true }), signal: (askAbort = new AbortController()).signal });
+      if (r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
         // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
         const reader = r.body.getReader(), dec = new TextDecoder();
         let full = '', spoken = 0, sp = null;
@@ -722,7 +847,7 @@ async function ask(text, item = null) {
         if (!reply) throw new Error('empty');
         suggestions = extra.split('|').map((x) => x.trim().replace(/^[-•\s]+/, '')).filter((x) => x.length > 3 && x.length < 70).slice(0, 2);
         if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; }
-        splitForSpeech(ans.slice(spoken)).forEach((x) => sp.push(x));
+        splitForSpeech(ans.slice(spoken), speechChunk()).forEach((x) => sp.push(x));
       } else {
         const data = await r.json();
         if (!r.ok || !data.reply) throw new Error(data.error);
@@ -763,8 +888,12 @@ function newChat() {
   history = []; showCaption('', CONFIG.greeting); setStatus(CONFIG.idleStatus);
 }
 
+$('#kbBtn').addEventListener('click', () => {      // مع الأفتار الحي: زر لوحة المفاتيح يُظهر خانة الكتابة ويخفيها
+  const on = document.body.classList.toggle('typing'); buzz(10);
+  if (on) { ensureAudio(); $('#textInput').focus(); } else $('#textInput').blur();
+});
 $('#textForm').addEventListener('submit', (e) => {
-  e.preventDefault(); ensureAudio();
+  e.preventDefault(); ensureAudio(); document.body.classList.remove('typing');
   const v = $('#textInput').value; $('#textInput').value = ''; $('#textInput').blur();
   ask(v);
 });
@@ -942,6 +1071,7 @@ async function startAutoListen() {
     rec.start(); startedAt = now; lastLoud = now; loudMs = 0;
     if (barge) return;                                       // تسجيل صامت أثناء كلام نزيه (مقاطعة محتملة)
     ensureDidConnected();                                    // جهّز الأفتار أثناء كلام الزائر
+    resetIdle();
     micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
   };
   const blocked = () => busy || speakingNow || didTalking || recState || document.hidden || performance.now() - lastSpokeAt < 700;
@@ -1161,7 +1291,9 @@ let idleTimer;
 function resetIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
-    if (talking || busy || recState) return resetIdle();
+    // لا يُمسح الحوار ونزيه يتكلم أو يسمع (في الاستماع التلقائي يتحاور الزائر دقائق بدون أي لمسة)
+    if (talking || busy || recState || speakingNow || didTalking || autoMic?.recording) return resetIdle();
+    if (didDropped) { location.reload(); return; }      // الأفتار الحي تعطل سابقاً: أعد التحميل لاسترجاعه
     if (dlg.open) dlg.close();
     closeSheets(); newChat();
     followUps = []; renderCarousel(true);

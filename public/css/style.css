@@ -294,3 +294,28 @@ body.did-reconnecting #didCover span{opacity:.75}
 
 .pdf-box{padding:calc(3*var(--u));display:grid;gap:calc(2*var(--u));justify-items:center;background:#eef1ee;text-align:center;font-size:calc(2.9*var(--u))}
 .pdf-open{display:inline-block;padding:calc(1.8*var(--u)) calc(5*var(--u));border-radius:999px;background:#1d5c3a;color:#fff;font-weight:600;text-decoration:none}
+
+/* ---------- v13 ---------- */
+/* زر لوحة المفاتيح وخانة الكتابة مع الأفتار الحي */
+#kbBtn{display:none}
+body.did-on .input-row{flex-direction:column;gap:calc(1.6*var(--u))}
+body.did-on #kbBtn{display:flex}
+body.did-on.no-text #kbBtn{display:none}
+body.did-on.typing #kbBtn{background:var(--green)}
+body.did-on.typing #kbBtn svg{color:#fff}
+body.did-on.typing .text-form{display:flex;position:fixed;z-index:8;inset-inline:var(--side);bottom:calc(var(--dock) + 24*var(--u));background:rgba(255,255,255,.96);animation:rise .2s ease-out}
+body.did-on.typing #caption.show{margin-bottom:calc(35*var(--u))}
+@media (min-aspect-ratio:1/1){
+  body.did-on .input-row{flex-direction:row}
+  body.did-on.typing .text-form{inset-inline:max(var(--side),calc((100vw - 150*var(--u))/2));bottom:calc(var(--dock) + 2*var(--u));margin-right:calc(24*var(--u))}
+  body.did-on.typing #caption.show{margin-bottom:calc(13*var(--u))}
+}
+/* بطاقة الإجابة تترك مكاناً لزر المايك العائم فلا يغطي نصها */
+body.did-on.ptt #caption{margin-right:calc(23*var(--u))}
+
+/* أفتار الموقع الخاص: لوحة الرسم تملأ مكان الشخصية بدل فيديو D-ID */
+body.own-avatar .stage-box{display:block;position:absolute;inset:0 auto 0 50%;transform:translateX(-50%);width:min(100cqi,210cqb);height:100%;z-index:2;-webkit-mask-image:none;mask-image:none}
+body.own-avatar #cv{object-fit:cover;object-position:50% 38%}
+body.own-avatar #did,body.own-avatar #didCover{display:none!important}
+body.own-avatar .row.local-only{display:flex}
+body.did-on #caption{max-height:calc(34*var(--u))}

@@ -63,15 +63,39 @@ const SYSTEM_PROMPT = `
 - إذا سُئلت عن موضوع بعيد تماماً، ردّ بلطف وارجع للحديث عن النزاهة ومكافحة الفساد والأنظمة.
 `.trim();
 
-// ---------- حماية بسيطة من الإفراط في الاستخدام ----------
+// ---------- حماية من الإفراط في الاستخدام ----------
+// زوار الفعالية على شبكة الجامعة يخرجون للإنترنت بعنوان IP واحد أو عناوين قليلة، فالحد لكل عنوان مرتفع،
+// ومعه حد إجمالي للخادم كله يحمي فاتورة OpenAI. يمكن تغيير الرقمين من Environment في Render.
+const RATE_PER_MIN = Number(process.env.RATE_PER_MIN || 240);      // لكل عنوان IP في الدقيقة
+const GLOBAL_PER_MIN = Number(process.env.GLOBAL_PER_MIN || 3000);  // لكل الزوار معاً في الدقيقة
 const hits = new Map();
+let globalHits = [];
 function rateLimited(ip) {
   const now = Date.now();
+  globalHits = globalHits.filter((t) => now - t < 60_000);
+  if (globalHits.length >= GLOBAL_PER_MIN) return true;
   const arr = (hits.get(ip) || []).filter((t) => now - t < 60_000);
-  arr.push(now);
-  hits.set(ip, arr);
-  return arr.length > 30; // 30 طلب في الدقيقة لكل جهاز
+  if (arr.length >= RATE_PER_MIN) { hits.set(ip, arr); return true; }
+  arr.push(now); hits.set(ip, arr); globalHits.push(now);
+  return false;
 }
+setInterval(() => {                      // تنظيف العناوين القديمة حتى لا تكبر الذاكرة مع آلاف الزوار
+  const now = Date.now();
+  for (const [ip, arr] of hits) if (!arr.length || now - arr[arr.length - 1] > 60_000) hits.delete(ip);
+}, 60_000).unref();
+
+// طلبات الـ API تُقبل من صفحات الموقع نفسه فقط (يمنع مواقع أخرى من استخدام مفتاحك).
+// لإضافة نطاق آخر: ALLOWED_ORIGINS=https://example.com,https://www.example.com
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+function sameSite(req) {
+  const src = req.headers.origin || req.headers.referer || '';
+  let host = '';
+  try { host = new URL(src).host.toLowerCase(); } catch { return false; }
+  const mine = [req.headers.host, req.headers['x-forwarded-host']].filter(Boolean).map((h) => String(h).split(',')[0].trim().toLowerCase());
+  if (mine.includes(host)) return true;
+  return ALLOWED_ORIGINS.some((o) => { try { return new URL(o).host === host; } catch { return o === host; } });
+}
+const withTimeout = (ms) => AbortSignal.timeout(ms);   // حتى لا يبقى الزائر معلّقاً إذا تأخر OpenAI
 
 // ---------- أدوات ----------
 const MIME = {
@@ -115,7 +139,13 @@ async function handleChat(req, res) {
       .map((m) => ({ role: m.role, content: m.content.slice(0, 2500) })),
   ];
   const stream = body.stream === true;
-  const r = await chatCall(messages, stream);
+  // إذا قاطع الزائر أو أغلق الصفحة نوقف طلب OpenAI فوراً (لا ندفع ثمن جواب لن يُسمع)
+  const ac = new AbortController();
+  const killer = setTimeout(() => ac.abort(), 60_000);
+  res.on('close', () => { clearTimeout(killer); if (!res.writableEnded) ac.abort(); });
+  let r;
+  try { r = await chatCall(messages, stream, ac.signal); }
+  catch (e) { clearTimeout(killer); if (!res.headersSent && !res.destroyed) sendJSON(res, 504, { error: 'تأخر الرد، حاول مرة ثانية' }); return; }
   if (!r.ok) {
     const data = await r.json().catch(() => ({}));
     return sendJSON(res, 502, { error: data.error?.message || 'OpenAI error' });
@@ -136,10 +166,12 @@ async function handleChat(req, res) {
           try { const t = JSON.parse(d).choices?.[0]?.delta?.content; if (t) res.write(t); } catch {}
         }
       }
-    } catch (e) { console.warn('stream:', e.message); }
+    } catch (e) { if (e.name !== 'AbortError') console.warn('stream:', e.message); }
+    clearTimeout(killer);
     return res.end();
   }
   const data = await r.json();
+  clearTimeout(killer);
   const raw = data.choices?.[0]?.message?.content?.trim() || '';
   // السطر الأخير الذي يبدأ بـ § يحمل أسئلة المتابعة المقترحة
   const [answer, extra = ''] = raw.split('§');
@@ -154,7 +186,7 @@ const CHAT_STYLES = {
   classic: (m) => ({ model: CHAT_MODEL, messages: m, temperature: 0.2, max_tokens: 700 }),
 };
 let chatStyle = null;
-async function chatCall(messages, stream) {
+async function chatCall(messages, stream, signal) {
   const legacy = /^(gpt-4|gpt-3|chatgpt-4)/.test(CHAT_MODEL);
   const order = chatStyle ? [chatStyle] : legacy ? ['classic', 'plain', 'fast'] : ['fast', 'plain', 'classic'];
   let r;
@@ -163,18 +195,30 @@ async function chatCall(messages, stream) {
       method: 'POST',
       headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...CHAT_STYLES[name](messages), ...(stream ? { stream: true } : {}) }),
+      signal,
     });
     if (r.status !== 400) { if (r.ok && chatStyle !== name) { chatStyle = name; console.log(`chat style: ${name} (${CHAT_MODEL})`); } return r; }
-    if (chatStyle) { chatStyle = null; return chatCall(messages, stream); }   // الصيغة المحفوظة لم تعد تعمل: أعد المحاولة بكل الصيغ
+    if (chatStyle) { chatStyle = null; return chatCall(messages, stream, signal); }   // الصيغة المحفوظة لم تعد تعمل: أعد المحاولة بكل الصيغ
     if (name !== order[order.length - 1]) await r.arrayBuffer().catch(() => {});
   }
   return r;
 }
 
+/* ذاكرة الصوت: المقطع الذي نُطق مرة (خصوصاً الإجابات الجاهزة التي يسمعها كل الزوار) يُحفظ في الخادم،
+   فلا يُطلب من OpenAI مرة ثانية: أسرع للزائر وأوفر في الفاتورة. الحد الأقصى 80 ميجابايت ثم يُحذف الأقدم. */
+const TTS_CACHE = new Map(); let ttsBytes = 0;
+const TTS_CACHE_MAX = Number(process.env.TTS_CACHE_MB || 80) * 1024 * 1024;
+function sendAudio(res, buf, hit) {
+  res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store', 'X-Cache': hit ? 'hit' : 'miss' });
+  res.end(buf);
+}
 async function handleTTS(req, res) {
   if (needKey(res)) return;
   const { text } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
   if (!text) return sendJSON(res, 400, { error: 'no text' });
+  const key = String(text).slice(0, 1500);
+  const cached = TTS_CACHE.get(key);
+  if (cached) { TTS_CACHE.delete(key); TTS_CACHE.set(key, cached); return sendAudio(res, cached, true); }
   const payload = {
     model: TTS_MODEL, voice: TTS_VOICE, input: String(text).slice(0, 1500), response_format: 'mp3',
   };
@@ -186,16 +230,20 @@ async function handleTTS(req, res) {
     method: 'POST',
     headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal: withTimeout(30_000),
   });
   if (!r.ok) { const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
   const buf = Buffer.from(await r.arrayBuffer());
-  res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
-  res.end(buf);
+  if (buf.length < TTS_CACHE_MAX / 4) {
+    TTS_CACHE.set(key, buf); ttsBytes += buf.length;
+    while (ttsBytes > TTS_CACHE_MAX) { const [k, v] = TTS_CACHE.entries().next().value; TTS_CACHE.delete(k); ttsBytes -= v.length; }
+  }
+  sendAudio(res, buf, false);
 }
 
 async function handleSTT(req, res) {
   if (needKey(res)) return;
-  const audio = await readBody(req);
+  const audio = await readBody(req, 3 * 1024 * 1024);   // 25 ثانية صوت لا تتجاوز مئات الكيلوبايت
   if (audio.length < 1000) return sendJSON(res, 400, { error: 'audio too short' });
   const type = (req.headers['content-type'] || 'audio/webm').split(';')[0];
   const ext = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : type.includes('wav') ? 'wav' : type.includes('mpeg') ? 'mp3' : 'webm';
@@ -205,7 +253,7 @@ async function handleSTT(req, res) {
   form.append('language', 'ar');
   form.append('prompt', 'سؤال من زائر عن النزاهة ومكافحة الفساد: هيئة الرقابة ومكافحة الفساد نزاهة، الرشوة، التزوير، محرر رسمي، غسل الأموال، حماية المبلّغين والشهود، النظام الأساسي للحكم، مجلس الشورى، مجلس الوزراء، نظام المناطق، هيئة البيعة، الانضباط الوظيفي، الخدمة المدنية، أعضاء هيئة التدريس، الترقية، التفرغ العلمي، المال العام، المادة، العقوبة، جامعة حائل.');
   const r = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
-    method: 'POST', headers: { Authorization: `Bearer ${API_KEY}` }, body: form,
+    method: 'POST', headers: { Authorization: `Bearer ${API_KEY}` }, body: form, signal: withTimeout(30_000),
   });
   const data = await r.json();
   if (!r.ok) return sendJSON(res, 502, { error: data.error?.message || 'STT error' });
@@ -257,6 +305,7 @@ http.createServer(async (req, res) => {
     if (req.url.startsWith('/api/')) {
       if (req.method !== 'POST') return sendJSON(res, 405, { error: 'POST only' });
       const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+      if (!sameSite(req)) return sendJSON(res, 403, { error: 'forbidden' });
       if (rateLimited(ip)) return sendJSON(res, 429, { error: 'طلبات كثيرة، حاول بعد قليل' });
       if (req.url.startsWith('/api/chat')) return await handleChat(req, res);
       if (req.url.startsWith('/api/tts')) return await handleTTS(req, res);
@@ -265,8 +314,9 @@ http.createServer(async (req, res) => {
     }
     serveStatic(req, res);
   } catch (e) {
-    console.error(e);
-    if (!res.headersSent) sendJSON(res, 500, { error: 'خطأ في الخادم' });
+    const timeout = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+    if (!timeout) console.error(e);
+    if (!res.headersSent && !res.destroyed) sendJSON(res, timeout ? 504 : 500, { error: timeout ? 'تأخر الرد، حاول مرة ثانية' : 'خطأ في الخادم' });
   }
 }).listen(PORT, () => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
