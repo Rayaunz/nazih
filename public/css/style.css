@@ -291,3 +291,6 @@ body.did-reconnecting #didCover span{opacity:.75}
 #didCover{transition:opacity .35s}
 
 .mic-btn.stop{background:#b3261e;border-color:#fff;color:#fff}
+
+.pdf-box{padding:calc(3*var(--u));display:grid;gap:calc(2*var(--u));justify-items:center;background:#eef1ee;text-align:center;font-size:calc(2.9*var(--u))}
+.pdf-open{display:inline-block;padding:calc(1.8*var(--u)) calc(5*var(--u));border-radius:999px;background:#1d5c3a;color:#fff;font-weight:600;text-decoration:none}

@@ -592,8 +592,9 @@ const LAW_ALIASES = {
   basic: ['اساسي للحكم', 'نظام الحكم', 'النظام الاساسي'], shura: ['شوري'], regions: ['نظام المناطق', 'مناطق المملكه', 'امير المنطقه', 'امراء المناطق'], cabinet: ['مجلس الوزراء'], bayah: ['بيعه'],
   nazaha: ['هيئه الرقابه', 'نظام نزاهه', 'نظام الهيئه', 'نظام مكافحه الفساد'], bribery: ['رشوه', 'رشاوي', 'راشي', 'مرتشي'], protect: ['مبلغين', 'حمايه المبلغ', 'الشهود', 'حمايه الشاهد'], aml: ['غسل الاموال', 'غسيل الاموال', 'غسل اموال', 'غسيل اموال'],
   forgery: ['تزوير', 'مزور', 'محرر رسمي', 'محرر عرفي'], discipline: ['انضباط'], civil: ['خدمه المدنيه', 'خدمه مدنيه'],
+  faculty: ['هيئه التدريس', 'منسوبي الجامعات', 'استاذ مساعد', 'استاذ مشارك', 'التفرغ العلمي'],
 };
-const textLaws = () => (window.LAWS || []).filter((l) => !l.pages && l.id !== 'forgery-old');
+const textLaws = () => (window.LAWS || []).filter((l) => !l.pages && !l.pdf && l.id !== 'forgery-old');
 let lastLawId = null;
 function detectLaws(n) {                     // كل الأنظمة المذكورة في السؤال (قد يسأل الزائر عن أكثر من نظام)
   const ids = Object.entries(LAW_ALIASES).filter(([, keys]) => keys.some((k) => n.includes(k))).map(([id]) => id);
@@ -647,10 +648,14 @@ function retrieveContext(text) {
     if (whole && whole.length <= 11000) return whole;
   }
   if (!terms.length && !lawIds.length) return '';
-  const all = LAW_INDEX.map((e) => {
+  // وزن كل كلمة بحسب ندرتها: الكلمة التي ترد في أغلب المواد (مثل «هيئة التدريس» داخل لائحتها) لا تميّز مادة عن أخرى
+  const N = LAW_INDEX.length;
+  const counts = terms.map((tm) => LAW_INDEX.map((e) => e.n.split(tm).length - 1));
+  const idf = counts.map((cs) => Math.log(1 + N / (1 + cs.filter(Boolean).length)));
+  const all = LAW_INDEX.map((e, i) => {
     let sc = 0;
-    for (const tm of terms) { const c = e.n.split(tm).length - 1; if (c) sc += Math.min(c, 3) * (tm.length > 4 ? 2 : 1); }
-    if (sc && lawIds.includes(e.law.id)) sc += 6;
+    terms.forEach((tm, t) => { const c = counts[t][i]; if (c) sc += Math.min(c, 3) * idf[t] * (tm.length > 4 ? 1.3 : 1); });
+    if (sc && lawIds.includes(e.law.id)) sc += 4;
     return { e, sc };
   });
   const picked = [];
@@ -1026,7 +1031,7 @@ function parseLawText(text) {
 }
 (function mergeExtraLaws() {
   const all = window.LAWS || [], extra = (window.EXTRA_LAWS || []).map((e, i) => ({ id: 'extra-' + i, name: e.name || '', decree: e.decree || '', note: e.note || '', preLabel: 'تمهيد', ...parseLawText(e.text) }));
-  const at = all.findIndex((l) => l.pages);            // الإضافات قبل اللوائح المصوّرة
+  const at = all.findIndex((l) => l.pages || l.pdf);   // الإضافات قبل اللوائح المصوّرة
   window.LAWS = at < 0 ? [...all, ...extra] : [...all.slice(0, at), ...extra, ...all.slice(at)];
 })();
 
@@ -1045,6 +1050,12 @@ function renderLaw(filter = '') {
   const hl = (t) => { const safe = escapeHTML(t); return re ? safe.replace(re, (m) => `<mark>${m}</mark>`) : safe; };
   let total = 0;
   const html = laws.map((law) => {
+    if (law.pdf) {     // لائحة مصوّرة تُفتح كملف PDF (غير قابلة للبحث)
+      if (f) return '';
+      return `<details class="law pages" data-pdf="1">
+        <summary><span class="law-name">${escapeHTML(law.name)}<small>${escapeHTML(law.decree)}</small></span><span class="badge">${law.pdfPages || ''} صفحة</span></summary>
+        <div class="pdf-box"><p>هذه اللائحة متاحة كنسخة مصوّرة من الطبعة الرسمية.</p><a class="pdf-open" href="${law.pdf}" target="_blank" rel="noopener">فتح اللائحة (PDF)</a></div></details>`;
+    }
     if (law.pages) {   // لائحة معروضة كصور صفحات (غير قابلة للبحث)
       if (f) return '';
       return `<details class="law pages" data-law="${law.id}">
@@ -1063,7 +1074,7 @@ function renderLaw(filter = '') {
   }).join('');
   box.innerHTML = html || '<p>لا توجد نتائج مطابقة.</p>';
   // صور الصفحات تُحمّل فقط عند فتح اللائحة
-  $$('details.law.pages', box).forEach((d) => d.addEventListener('toggle', () => {
+  $$('details.law.pages:not([data-pdf])', box).forEach((d) => d.addEventListener('toggle', () => {
     const pb = $('.pages-box', d); if (!d.open || pb.childElementCount) return;
     const law = laws.find((l) => l.id === d.dataset.law);
     pb.innerHTML = law.pages.map((p, i) => `<img loading="lazy" src="${p}" alt="${escapeHTML(law.name)} — صفحة ${i + 1}">`).join('');

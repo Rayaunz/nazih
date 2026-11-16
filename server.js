@@ -75,6 +75,7 @@ function rateLimited(ip) {
 
 // ---------- أدوات ----------
 const MIME = {
+  '.pdf': 'application/pdf',
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml',
@@ -202,7 +203,7 @@ async function handleSTT(req, res) {
   form.append('file', new Blob([audio], { type }), `speech.${ext}`);
   form.append('model', STT_MODEL);
   form.append('language', 'ar');
-  form.append('prompt', 'سؤال من زائر عن النزاهة ومكافحة الفساد: هيئة الرقابة ومكافحة الفساد نزاهة، الرشوة، التزوير، محرر رسمي، غسل الأموال، حماية المبلّغين والشهود، النظام الأساسي للحكم، مجلس الشورى، مجلس الوزراء، نظام المناطق، هيئة البيعة، الانضباط الوظيفي، الخدمة المدنية، المال العام، المادة، العقوبة، جامعة حائل.');
+  form.append('prompt', 'سؤال من زائر عن النزاهة ومكافحة الفساد: هيئة الرقابة ومكافحة الفساد نزاهة، الرشوة، التزوير، محرر رسمي، غسل الأموال، حماية المبلّغين والشهود، النظام الأساسي للحكم، مجلس الشورى، مجلس الوزراء، نظام المناطق، هيئة البيعة، الانضباط الوظيفي، الخدمة المدنية، أعضاء هيئة التدريس، الترقية، التفرغ العلمي، المال العام، المادة، العقوبة، جامعة حائل.');
   const r = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
     method: 'POST', headers: { Authorization: `Bearer ${API_KEY}` }, body: form,
   });
