@@ -326,7 +326,7 @@ function initDID() {
       CONFIG.idleStatus = CONFIG.didStatus; setStatus(CONFIG.idleStatus);
       try {
         api.events?.on('agentActivity', ({ state }) => {
-          didTalking = state === 'TALKING';
+          didTalking = state === 'TALKING'; if (didTalking) T.mark('talking');
           app.classList.toggle('talking', didTalking);
           if (CONFIG.ownBrain) muteDid();
           else if (CONFIG.pushToTalk && didTalking) setMic(false);      // نزيه بدأ يجاوب: يُقفل المايك
@@ -340,6 +340,16 @@ function initDID() {
     } else if (performance.now() - started > CONFIG.didWaitSeconds * 1000) clearInterval(timer);
   }, 300);
 }
+
+/* قياس زمن الاستجابة: افتح الموقع بـ ‎?debug=1‎ فيظهر أسفل الشاشة زمن كل مرحلة بعد كل سؤال */
+const DEBUG = params.get('debug') === '1';
+const T = { marks: {}, mark(k) { if (DEBUG && !(k in this.marks)) { this.marks[k] = performance.now(); this.show(); } }, reset() { this.marks = {}; },
+  show() {
+    let el = document.getElementById('dbg');
+    if (!el) { el = document.createElement('div'); el.id = 'dbg'; el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.78);color:#9f9;font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;direction:ltr;text-align:left;white-space:pre'; document.body.appendChild(el); }
+    const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-');
+    el.textContent = `silence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\navatar start : ${d('speakCall', 'talking')}\nTOTAL        : ${d('lastWord', 'talking')}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
+  } };
 
 /* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
    نغطي الرسالة بصورة نزيه، ونعيد الاتصال تلقائياً عند أول كلام أو لمسة أو سؤال. */
@@ -439,6 +449,7 @@ function makeSpeaker() {
         const part = q.shift();
         await ensureDidConnected();
         if (my !== speakSeq) break;
+        T.mark('speakCall');
         await did.functions.speak({ type: 'text', input: part });
         await waitDidDone(part.length);
       }
@@ -615,13 +626,15 @@ async function ask(text, item = null) {
   const intent = item ? null : detectIntent(text);
   if (intent) { runAction(intent, text); return; }
 
+  if (!T.marks.recEnd) T.reset();
+  T.mark('askStart');
   setBusy(true); ensureDidConnected();
   showCaption(text, '', true);
   history.push({ role: 'user', content: text });
   setStatus('نزيه يفكر...');
   let reply, suggestions = [], hit = item, streamed = null;
   const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
-  if (exact) reply = exact;
+  if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
   if (!hit && !exact) {
     try {
       const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: !!did }) });
@@ -639,7 +652,7 @@ async function ask(text, item = null) {
             const m = /[.؟?!\n]/.exec(ans.slice(25));
             if (m && full.length > 25 + m.index + 1) {
               spoken = 25 + m.index + 1;
-              stopSpeaking(); sp = makeSpeaker(); sp.push(ans.slice(0, spoken)); streamed = sp;
+              T.mark('firstText'); stopSpeaking(); sp = makeSpeaker(); sp.push(ans.slice(0, spoken)); streamed = sp;
             }
           }
           if (ans.trim()) showCaption(text, ans.trim());
@@ -822,6 +835,7 @@ async function processSpeech(blob, quiet) {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error);
     setBusy(false);
+    T.mark('sttDone');
     const text = (data.text || '').trim(), n = norm(text);
     const junk = !text || (quiet && (n.replace(/\s/g, '').length < 4 || STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 12)));
     if (junk) { setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
@@ -851,6 +865,7 @@ async function startAutoListen() {
   let noise = 0.012, rec = null, chunks = [], loudMs = 0, lastLoud = 0, startedAt = 0, last = performance.now(), forced = false;
   const finish = (keep) => {
     const r = rec; if (!r) return;
+    if (keep) { T.reset(); T.marks.lastWord = lastLoud; T.mark('recEnd'); }
     rec = null; forced = false; micLevel = 0; micBtn.classList.remove('listening');
     const parts = chunks; chunks = [];
     r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), true) : null;
