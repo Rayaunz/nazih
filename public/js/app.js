@@ -334,11 +334,57 @@ function initDID() {
         api.events?.on('connection', () => { if (CONFIG.ownBrain) muteDid(); else if (CONFIG.pushToTalk) setMic(false); });
         api.events?.on('error', ({ error }) => console.warn('D-ID:', error));
       } catch (e) { console.warn(e); }
+      setInterval(watchDid, 1500);
       if (CONFIG.ownBrain) { document.body.classList.add('ptt'); muteDid(); setInterval(muteDid, 4000); setStatus(CONFIG.idleStatus); if (CONFIG.handsFree) startAutoListen(); }
       else if (CONFIG.pushToTalk) { document.body.classList.add('ptt'); setMic(false); setTimeout(() => setMic(micOpen), 3000); }
     } else if (performance.now() - started > CONFIG.didWaitSeconds * 1000) clearInterval(timer);
   }, 300);
 }
+
+/* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
+   نغطي الرسالة بصورة نزيه، ونعيد الاتصال تلقائياً عند أول كلام أو لمسة أو سؤال. */
+let didDown = false, didReconnecting = null;
+function didFindButton(re) {
+  const walk = (root) => {
+    for (const el of root.querySelectorAll('*')) {
+      if ((el.tagName === 'BUTTON' || el.getAttribute?.('role') === 'button') && re.test(el.textContent || '')) return el;
+      if (el.shadowRoot) { const r = walk(el.shadowRoot); if (r) return r; }
+    }
+    return null;
+  };
+  try { return walk(document.getElementById('did') || document) || walk(document); } catch { return null; }
+}
+function setDidDown(v) {
+  if (didDown === v) return;
+  didDown = v; document.body.classList.toggle('did-down', v);
+  if (v) { didTalking = false; app.classList.remove('talking'); }
+}
+function watchDid() { if (did && !didReconnecting) setDidDown(!!didFindButton(/reconnect/i)); }
+function ensureDidConnected() {
+  if (!did) return Promise.resolve();
+  watchDid();
+  if (!didDown) return Promise.resolve();
+  if (didReconnecting) return didReconnecting;
+  document.body.classList.add('did-reconnecting');
+  $('#didCover span').textContent = 'لحظة.. نزيه يستعد';
+  didReconnecting = (async () => {
+    const t0 = performance.now();
+    try { didFindButton(/reconnect/i)?.click(); } catch {}
+    try { const f = did.functions; await Promise.resolve((f.reconnect || f.connect)?.call(f)).catch(() => {}); } catch {}
+    while (performance.now() - t0 < 15000) {                 // ننتظر حتى تختفي رسالة إعادة الاتصال
+      await sleep(400);
+      if (!didFindButton(/reconnect/i)) break;
+      if (performance.now() - t0 > 5000) { try { didFindButton(/reconnect/i)?.click(); } catch {} await sleep(1500); }
+    }
+    await sleep(1200);                                       // مهلة قصيرة حتى يجهز البث
+    didReconnecting = null;
+    document.body.classList.remove('did-reconnecting');
+    $('#didCover span').textContent = 'تكلّم أو المس الشاشة للبدء';
+    setDidDown(!!didFindButton(/reconnect/i)); muteDid();
+  })();
+  return didReconnecting;
+}
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && didDown) ensureDidConnected(); }, { passive: true }));
 
 /* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
 let didTalking = false;
@@ -391,6 +437,8 @@ function makeSpeaker() {
         if (my !== speakSeq) break;                         // قوطع بسؤال جديد
         if (!q.length) { if (done) break; await new Promise((r) => { wake = r; }); continue; }
         const part = q.shift();
+        await ensureDidConnected();
+        if (my !== speakSeq) break;
         await did.functions.speak({ type: 'text', input: part });
         await waitDidDone(part.length);
       }
@@ -567,7 +615,7 @@ async function ask(text, item = null) {
   const intent = item ? null : detectIntent(text);
   if (intent) { runAction(intent, text); return; }
 
-  setBusy(true);
+  setBusy(true); ensureDidConnected();
   showCaption(text, '', true);
   history.push({ role: 'user', content: text });
   setStatus('نزيه يفكر...');
@@ -814,6 +862,7 @@ async function startAutoListen() {
     rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     rec.ondataavailable = (e) => e.data.size && mine.push(e.data);
     rec.start(); startedAt = now; lastLoud = now; loudMs = 0;
+    ensureDidConnected();                                    // جهّز الأفتار أثناء كلام الزائر
     micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
   };
   const blocked = () => busy || speakingNow || didTalking || recState || document.hidden || performance.now() - lastSpokeAt < 700;
