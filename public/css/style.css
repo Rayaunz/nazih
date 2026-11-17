@@ -328,3 +328,37 @@ body.simli.simli-live #simliBox{opacity:1}
 /* مؤشر «نزيه يتكلم» مع أفتار الموقع (الصورة لا تحرك الشفايف) */
 body.own-avatar .talk-badge{display:flex;z-index:6;top:auto;bottom:calc(var(--dock) + 3*var(--u));inset-inline-start:calc(4*var(--u))}
 body.simli.simli-live .talk-badge{display:none}
+
+/* ---------- v22: مواقف «وش تسوي لو؟» ---------- */
+.q-opt.partial{border-color:var(--gold);background:#fbf3d9}
+.q-exp.v-best{border-inline-start-color:var(--green-2);background:#e9f5ea}
+.q-exp.v-bad{border-inline-start-color:var(--red);background:#fbeceb}
+#scn .meta{text-align:center}
+
+/* ---------- v22: رمز QR وشاشة الترحيب (الشاشة الرئيسية فقط: body.screen) ---------- */
+#qrBadge,#attract{display:none}
+.qr-code{background:#fff;border-radius:calc(1.2*var(--u));overflow:hidden;line-height:0}
+.qr-code svg{display:block;width:100%;height:auto}
+.qr-code svg *{stroke:none!important;stroke-width:0!important}
+body.screen:not(.no-qr) #qrBadge{display:flex;flex-direction:column;align-items:center;gap:calc(.8*var(--u));position:absolute;z-index:6;top:calc(20*var(--u));inset-inline-start:calc(2*var(--u));
+  width:calc(21*var(--u));padding:calc(1.4*var(--u));border-radius:calc(2.4*var(--u));background:rgba(255,255,255,.92);box-shadow:var(--shadow);pointer-events:none}
+#qrBadge .qr-code{width:100%}
+#qrBadge span{font-size:calc(2.1*var(--u));font-weight:700;color:var(--green);text-align:center;line-height:1.45}
+body.screen.attract #qrBadge{display:none}
+body.screen.attract #attract:not([hidden]){display:flex;position:absolute;z-index:7;inset:auto var(--side) calc(var(--dock) + 3*var(--u));justify-content:center;pointer-events:none;animation:rise .4s ease-out}
+.attract-card{pointer-events:auto;display:flex;align-items:center;gap:calc(4*var(--u));padding:calc(3*var(--u)) calc(4*var(--u));border-radius:calc(4.5*var(--u));background:rgba(255,255,255,.93);box-shadow:var(--shadow);max-width:calc(150*var(--u))}
+.attract-text{flex:1;min-width:0}
+.attract-card h2{font-size:calc(5.2*var(--u));color:var(--green);line-height:1.4}
+.attract-card .big{font-size:calc(3.9*var(--u));font-weight:600;color:var(--ink);line-height:1.6}
+.attract-card .how{display:inline-flex;align-items:center;gap:calc(1.2*var(--u));margin-top:calc(1.6*var(--u));padding:calc(1*var(--u)) calc(3*var(--u));border-radius:99px;background:var(--green);color:#fff;font-weight:700;font-size:calc(3.3*var(--u));animation:apulse 1.8s infinite}
+@keyframes apulse{0%{box-shadow:0 0 0 0 rgba(27,94,32,.5)}100%{box-shadow:0 0 0 calc(3*var(--u)) rgba(27,94,32,0)}}
+.attract-card .how svg{width:calc(4.4*var(--u));height:calc(4.4*var(--u));fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.attract-card .how svg .fill{fill:currentColor;stroke:none}
+.attract-qr{flex:none;width:calc(30*var(--u));display:flex;flex-direction:column;align-items:center;gap:calc(1*var(--u))}
+.attract-qr .qr-code{width:100%;border:1px solid var(--line)}
+.attract-qr span{font-size:calc(2.5*var(--u));font-weight:700;color:var(--green);text-align:center;line-height:1.5}
+body.no-qr .attract-qr{display:none}
+body.attract #caption,body.attract .mic-zone,body.attract .ptt-label{visibility:hidden}
+@media (max-aspect-ratio:1/1){ .attract-card{flex-direction:column;text-align:center;gap:calc(2.4*var(--u))} .attract-qr{width:calc(36*var(--u))} }
+@media (min-aspect-ratio:1/1){ body.screen:not(.no-qr) #qrBadge{top:calc(14*var(--u));width:calc(18*var(--u))} }
+body.did-on.ptt #scn{padding-bottom:calc(24*var(--u))}

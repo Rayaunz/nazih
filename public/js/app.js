@@ -14,6 +14,17 @@ const CONFIG = {
   autoMinSpeechMs: 450,        // أقصر كلام يُقبل (يتجاهل الطقطقة والأصوات القصيرة)
   showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
+  scenarioLength: 4,           // عدد مواقف «وش تسوي لو؟» في كل جولة
+  attract: true,               // شاشة الترحيب على الشاشة الرئيسية وقت الخمول (الجوالات لا تتأثر)
+  attractEverySeconds: 75,     // نزيه يرحّب بالمارّين كل هذه المدة ما دامت الشاشة فاضية
+  attractLines: [              // عبارات الترحيب (تتبدل بالدور)
+    'حياكم الله في اليوم العالمي لمكافحة الفساد. أنا نزيه، تفضلوا اسألوني عن النزاهة والأنظمة.',
+    'يا هلا ومرحبا. عندك سؤال عن الرشوة أو البلاغات أو حماية المبلّغين؟ قرّب واسألني.',
+    'حياك الله. جرّب معي مواقف وش تسوي لو، وشف كيف تتصرف صح.',
+    'مرحبا بك. تبي تختبر معلوماتك في النزاهة؟ قل اختبرني.',
+    'يا هلا. إذا الشاشة مشغولة، صوّر الرمز وكمّل معي على جوالك.',
+  ],
+  stats: true,                 // إرسال أعداد مجهولة (زيارات، أسئلة، تقييم، اختبار) للوحة الإحصائيات
   idleStatus: 'اضغط للتحدث',
   didStatus: 'تحدّث مع نزيه مباشرة من الأعلى، أو اختر سؤالاً',   // نص الحالة عند تشغيل شخصية D-ID
   didWaitSeconds: 12,
@@ -91,6 +102,7 @@ const BANK = [
 /* بطاقات تفتح وظيفة بدل سؤال */
 const ACTIONS = [
   { id: 'quiz', icon: 'check', q: 'اختبر نفسك', cls: 'gold' },
+  { id: 'scenario', icon: 'scale', q: 'وش تسوي لو؟', cls: 'gold' },
   { id: 'laws', icon: 'book', q: 'تصفّح الأنظمة', cls: 'action' },
   { id: 'rate', icon: 'star', q: 'قيّم تجربتك', cls: 'action' },
 ];
@@ -778,6 +790,7 @@ function makeSimliAvatar(own) {
     functions: {
       async speak({ input }) {
         const my = ++token;
+        if (attractOn) return own.functions.speak({ input });                   // ترحيب الخمول بصورة نزيه وصوته: لا يفتح جلسة Simli ولا يستهلك دقائقها
         const ok = client ? true : await Promise.race([connect(), sleep(CONFIG.simliConnectWait * 1000).then(() => false)]);
         if (my !== token) return;
         if (!ok || !client) return own.functions.speak({ input });             // الاحتياطي: صورة نزيه وصوته
@@ -929,6 +942,7 @@ function detectIntent(text) {
   const has = (...w) => w.some((x) => n.includes(x)), word = (...w) => w.some((x) => words.includes(x));
   const ask = '(?:ابي|ابغي|ابغا|اريد|ودي|بغيت|نبي|عطني|اعطني|سو لي|سوي لي|افتح|افتح لي|ابدا|ابدء|شغل|ورني|اعرض|اعرض لي|خلنا نسوي|يلا)';
   const cmd = (things) => new RegExp(`${ask} (?:ال)?(?:${things})`).test(n);
+  if (has('وش تسوي لو', 'ماذا تفعل لو', 'وش اسوي لو') || cmd('موقف|مواقف') || (short && word('موقف', 'مواقف', 'المواقف'))) return 'scenario';
   if (word('اختبرني', 'اختبرنا', 'كويز') || has('اختبر نفسي', 'اختبر معلوماتي', 'اختبر نفسك') || cmd('اختبار|اختبر|مسابقه|تحدي|امتحان') || (short && word('اختبار', 'الاختبار', 'اختبر', 'مسابقه', 'المسابقه', 'تحدي', 'امتحان'))) return 'quiz';
   if (has('قيم تجربتك', 'اقيم تجربتي', 'اقيم التجربه', 'تقييم التجربه', 'تقييم تجربتي', 'اقيمك', 'ابي اقيم', 'ابغي اقيم', 'اريد ان اقيم') || cmd('تقييم|نجوم') || (short && word('تقييم', 'التقييم', 'اقيم', 'قيم', 'نجوم'))) return 'rate';
   if (has('تصفح الانظمه', 'تصفح النظام', 'قائمه الانظمه', 'لوحه الانظمه') || cmd('انظمه|نظام|لوائح|نص النظام|مواد النظام') && !/ماده|عقوب/.test(n) && words.length <= 5 || (short && word('الانظمه', 'انظمه', 'تصفح', 'اللوائح'))) return 'laws';
@@ -937,6 +951,7 @@ function detectIntent(text) {
 const INTENT_LINES = {
   quiz: 'أبشر، لنختبر معلوماتك في النزاهة. اختر الإجابة الصحيحة لكل سؤال.',
   rate: 'يسعدني رأيك. اختر عدد النجوم الذي يعبّر عن تجربتك.',
+  scenario: 'أبشر، بعرض عليك مواقف من الواقع، واختر وش تسوي.',
   laws: 'تفضّل، هذه الأنظمة ذات العلاقة. يمكنك البحث في مواد نظام الهيئة.',
 };
 function findBank(text) { const n = norm(text); return BANK.find((b) => norm(b.q) === n) || BANK.find((b) => b.k.some((k) => n.includes(k))); }
@@ -945,6 +960,8 @@ function findBank(text) { const n = norm(text); return BANK.find((b) => norm(b.q
  *  البحث في الأنظمة (محلياً داخل الموقع)
  * ========================================================= */
 const LAW_ALIASES = {
+  // اللوائح قبل أنظمتها: «لائحة الانضباط» تُقدَّم على «نظام الانضباط»
+  'discipline-reg': ['لائحه الانضباط', 'لائحه نظام الانضباط', 'التنفيذيه لنظام الانضباط', 'التنفيذيه للانضباط'], 'hr-reg': ['لائحه الموارد البشريه', 'التنفيذيه للموارد البشريه', 'لائحه الخدمه المدنيه', 'التنفيذيه لنظام الخدمه المدنيه'], 'non-saudi-staff': ['غير السعوديين', 'غير سعوديين', 'توظيف غير السعودي'],
   basic: ['اساسي للحكم', 'نظام الحكم', 'النظام الاساسي'], shura: ['شوري'], regions: ['نظام المناطق', 'مناطق المملكه', 'امير المنطقه', 'امراء المناطق'], cabinet: ['مجلس الوزراء'], bayah: ['بيعه'],
   nazaha: ['هيئه الرقابه', 'نظام نزاهه', 'نظام الهيئه', 'نظام مكافحه الفساد'], bribery: ['رشوه', 'رشاوي', 'راشي', 'مرتشي'], protect: ['مبلغين', 'حمايه المبلغ', 'الشهود', 'حمايه الشاهد'], aml: ['غسل الاموال', 'غسيل الاموال', 'غسل اموال', 'غسيل اموال'],
   forgery: ['تزوير', 'مزور', 'محرر رسمي', 'محرر عرفي'], discipline: ['انضباط'], civil: ['خدمه المدنيه', 'خدمه مدنيه'],
@@ -983,7 +1000,7 @@ function lookupArticle(text) {
   const law = textLaws().find((l) => l.id === lawId); if (!law) return null;
   lastLawId = lawId;
   const art = law.articles.find((a) => !/مكرر/.test(a.title) && articleNumber(a.title.replace(/^.*?ماده\s*|^المادة\s*/, '')) === num);
-  if (!art) return `لم أجد المادة رقم ${num} في ${law.name}، وعدد مواده ${law.articles.filter((a) => !/مكرر/.test(a.title)).length}.`;
+  if (!art) return `لم أجد المادة رقم ${num} في ${law.name}، وعدد مواده ${law.articles.filter((a) => !/مكرر|ملحق/.test(a.title)).length}.`;
   return `${art.title} من ${law.name}: ${art.body}`;
 }
 /* اختيار المواد الأقرب للسؤال لإرسالها مع السؤال إلى الذكاء الاصطناعي */
@@ -1051,6 +1068,7 @@ async function ask(text, item = null) {
   let reply, suggestions = [], hit = item, streamed = null;
   const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
   if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
+  track('q', { kind: hit ? 'bank' : exact ? 'exact' : 'ai', id: hit ? hit.id : '', src: takeSrc(), text: hit ? '' : text });
   if (!hit && !exact) {
     // إذا تأخر الجواب أكثر من لحظة يقول نزيه عبارة قصيرة («أبشر، لحظة») فيحس الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع
     let sp = null, firstSaid = false;
@@ -1119,8 +1137,10 @@ async function ask(text, item = null) {
 async function runAction(name, said = '') {
   const my = session;
   stopSpeaking();
+  resetIdle(); track('q', { kind: 'action', id: name, src: takeSrc() });
   if (name === 'quiz') startQuiz();
   openSheet(name);
+  if (name === 'scenario') { showCaption(said, ''); setStatus(CONFIG.idleStatus); startScenario(); return; }   // نزيه يقرأ الموقف نفسه
   showCaption(said, INTENT_LINES[name]);
   setStatus(CONFIG.idleStatus);
   await speak(INTENT_LINES[name]);
@@ -1139,7 +1159,7 @@ $('#kbBtn').addEventListener('click', () => {      // مع الأفتار الح
 $('#textForm').addEventListener('submit', (e) => {
   e.preventDefault(); ensureAudio(); document.body.classList.remove('typing');
   const v = $('#textInput').value; $('#textInput').value = ''; $('#textInput').blur();
-  ask(v);
+  askSrc = 'text'; ask(v);
 });
 
 /* ---------------- الأسئلة المتحركة ---------------- */
@@ -1151,7 +1171,7 @@ function renderCarousel(reshuffle = false) {
   if (reshuffle || !renderCarousel.order) {
     // بطاقات الوظائف موزعة بين الأسئلة: الاختبار أولاً، ثم الأسئلة بترتيب متنوع كل مرة
     const qs = shuffle(BANK);
-    renderCarousel.order = [ACTIONS[0], ...qs.slice(0, 4), ACTIONS[1], ...qs.slice(4, 9), ACTIONS[2], ...qs.slice(9)];
+    renderCarousel.order = [ACTIONS[0], ...qs.slice(0, 2), ACTIONS[1], ...qs.slice(2, 6), ACTIONS[2], ...qs.slice(6, 10), ACTIONS[3], ...qs.slice(10)];
   }
   carousel.innerHTML = followUps.map((q, i) => chipHTML({ id: `ai:${i}`, icon: 'spark', q }, 'ai')).join('') + renderCarousel.order.map((c) => chipHTML(c)).join('');
   carousel.scrollTo({ left: 0 });
@@ -1162,7 +1182,7 @@ function addFollowUps(list) { followUps = list.slice(0, 2); renderCarousel(); }
 let dragMoved = false;
 carousel.addEventListener('click', (e) => {
   const chip = e.target.closest('.chip'); if (!chip || dragMoved) return;
-  ensureAudio(); buzz(12);
+  ensureAudio(); buzz(12); askSrc = 'chip';
   const id = chip.dataset.id;
   if (id.startsWith('ai:')) return ask(followUps[Number(id.slice(3))]);
   if (ACTIONS.some((a) => a.id === id)) return runAction(id, '');
@@ -1457,7 +1477,7 @@ function renderLaw(filter = '') {
     const shown = itemsOf(law).filter((a) => !f || match(a));
     if (!shown.length) return '';
     total += shown.length;
-    total += 0; const count = f ? `${shown.length} نتيجة` : `${law.articles.length} ${(law.articles[0]?.title || '').startsWith('البند') ? 'بنود' : 'مادة'}`;
+    total += 0; const count = f ? `${shown.length} نتيجة` : `${law.articles.filter((a) => !/^(ال)?ملحق/.test(a.title)).length} ${(law.articles[0]?.title || '').startsWith('البند') ? 'بنود' : 'مادة'}`;
     return `<details class="law" ${f ? 'open' : ''}>
       <summary><span class="law-name">${escapeHTML(law.name)}<small>${escapeHTML(law.decree)}${!law.decree || /هـ|م$/.test(law.decree) ? '' : 'هـ'}</small></span><span class="badge">${count}</span></summary>
       ${law.note ? `<p class="law-note">${escapeHTML(law.note)}</p>` : ''}
@@ -1471,7 +1491,7 @@ function renderLaw(filter = '') {
     const law = laws.find((l) => l.id === d.dataset.law);
     pb.innerHTML = law.pages.map((p, i) => `<img loading="lazy" src="${p}" alt="${escapeHTML(law.name)} — صفحة ${i + 1}">`).join('');
   }));
-  $('#lawCount').textContent = f ? (total ? `${total} نتيجة في الأنظمة (اللوائح المصوّرة لا يشملها البحث)` : '') : `${laws.length} أنظمة ولوائح — اضغط على الاسم للعرض`;
+  $('#lawCount').textContent = f ? (total ? `${total} نتيجة في الأنظمة واللوائح` : '') : `${laws.length} أنظمة ولوائح — اضغط على الاسم للعرض`;
 }
 renderLaw();
 let lawTimer;
@@ -1495,6 +1515,7 @@ function renderQuiz() {
       const text = `حصلت على ${quiz.score} من ${n} في اختبار النزاهة مع «نزيه» — اليوم العالمي لمكافحة الفساد، جامعة حائل.`;
       try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); e.target.textContent = 'تم نسخ النتيجة'; } } catch {}
     };
+    track('quiz', { score: quiz.score, n });
     const line = `نتيجتك ${quiz.score} من ${n}. ${msg}.`;
     showCaption('', line); speak(line);
     return;
@@ -1523,9 +1544,98 @@ $$('#stars button').forEach((b) => b.addEventListener('click', () => {
   const v = Number(b.dataset.v); buzz(12);
   $$('#stars button').forEach((x) => x.classList.toggle('on', Number(x.dataset.v) <= v));
   try { const r = JSON.parse(localStorage.getItem('nazih-ratings') || '[0,0,0,0,0]'); r[v - 1]++; localStorage.setItem('nazih-ratings', JSON.stringify(r)); } catch {}
+  track('rate', { v });
   $('#rateMsg').textContent = 'شكراً لك! رأيك يساعدنا على التطوير.';
   setTimeout(() => { if (!$('#sheet-rate').hidden) closeSheets(); }, 2200);
 }));
+
+
+/* ---------------- مواقف «وش تسوي لو؟» ---------------- */
+let scn = null;
+const VERDICT = { best: 'التصرف الأمثل', ok: 'مقبول، وفيه أكمل منه', bad: 'تصرف خاطئ' };
+function startScenario() { scn = { items: shuffle(window.SCENARIOS || []).slice(0, CONFIG.scenarioLength), i: 0, best: 0 }; renderScenario(); }
+function renderScenario() {
+  const box = $('#scn'), n = scn.items.length;
+  if (scn.i >= n) {
+    const msg = scn.best === n ? 'ما شاء الله، كل اختياراتك هي التصرف الأمثل' : scn.best >= n / 2 ? 'تصرفاتك طيبة، وبعضها فيه أكمل منه' : 'المواقف هذي تحتاج وقفة، والنزاهة تبدأ بالتصرف الصح';
+    box.innerHTML = `<div class="score">${scn.best} / ${n}</div><p class="score-msg">${msg}</p>
+      <p class="meta">عدد المواقف التي اخترت فيها التصرف الأمثل</p>
+      <div class="btn-row"><button class="btn" id="scnAgain">مواقف جديدة</button><button class="btn ghost" id="scnQuiz">اختبر نفسك</button></div>`;
+    $('#scnAgain').onclick = () => { startScenario(); };
+    $('#scnQuiz').onclick = () => { runAction('quiz', ''); };
+    const line = `اخترت التصرف الأمثل في ${scn.best} من ${n} مواقف. ${msg}.`;
+    showCaption('', line); speak(line);
+    return;
+  }
+  const it = scn.items[scn.i], order = shuffle(it.o.map((_, i) => i));
+  box.innerHTML = `<div class="q-progress"><div style="width:${(scn.i / n) * 100}%"></div></div>
+    <div class="q-num">الموقف ${scn.i + 1} من ${n}</div>
+    <div class="q-text">${escapeHTML(it.s)}</div>
+    <div class="q-opts">${order.map((i) => `<button class="q-opt" data-i="${i}">${escapeHTML(it.o[i].t)}</button>`).join('')}</div>
+    <div id="scnAfter"></div>`;
+  $('#scn').scrollTop = 0;
+  speak(it.s);
+  $$('.q-opt', box).forEach((b) => b.addEventListener('click', () => {
+    const o = it.o[Number(b.dataset.i)]; resetIdle();
+    buzz(o.v === 'bad' ? [20, 40, 20] : 12);
+    $$('.q-opt', box).forEach((x) => { x.disabled = true; const v = it.o[Number(x.dataset.i)].v; if (v === 'best') x.classList.add('correct'); });
+    if (o.v === 'bad') b.classList.add('wrong'); else if (o.v === 'ok') b.classList.add('partial');
+    if (o.v === 'best') scn.best++;
+    track('scn', { id: it.id, v: o.v });
+    $('#scnAfter').innerHTML = `<div class="q-exp v-${o.v}"><b>${VERDICT[o.v]}</b>${escapeHTML(o.c)}</div>
+      <button class="btn" id="scnNext">${scn.i + 1 < n ? 'الموقف التالي' : 'النتيجة'}</button>`;
+    $('#scnNext').onclick = () => { stopSpeaking(); scn.i++; renderScenario(); };
+    box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+    showCaption('', o.c); speak(o.c);
+  }));
+}
+
+/* ---------------- الإحصائيات (أعداد مجهولة تُرسل للخادم، بدون أسماء ولا تسجيل صوت) ---------------- */
+const SCREEN = (() => {                              // هل هذا الجهاز هو الشاشة الرئيسية؟ (وجه Simli، أو ‎?screen=1‎ مرة واحدة)
+  try { const q = params.get('screen'); if (q === '1' || q === '0') localStorage.setItem('nazih.screen', q); if (localStorage.getItem('nazih.screen') === '0') return false; return !!window.NAZIH_SIMLI || localStorage.getItem('nazih.screen') === '1'; } catch { return !!window.NAZIH_SIMLI; }
+})();
+const FROM_QR = params.get('from') === 'qr';
+const DEV = (() => { try { let d = localStorage.getItem('nazih.dev'); if (!d) { d = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem('nazih.dev', d); } return d; } catch { return ''; } })();
+let askSrc = '', sessionOpen = false;
+const takeSrc = () => { const v = askSrc || 'voice'; askSrc = ''; return v; };
+function track(t, d = {}) {
+  if (!CONFIG.stats || TEST) return;
+  const send = (o) => { try { const b = new Blob([JSON.stringify(o)], { type: 'text/plain' }); if (!navigator.sendBeacon?.(`${CONFIG.apiBase}/api/event`, b)) fetch(`${CONFIG.apiBase}/api/event`, { method: 'POST', body: b, keepalive: true }).catch(() => {}); } catch {} };
+  if (!sessionOpen && t !== 'open') { sessionOpen = true; send({ t: 'session', dev: DEV, screen: SCREEN, qr: FROM_QR }); }   // جلسة = زائر بدأ يتفاعل (على الشاشة: كل زائر جديد بعد الخمول)
+  send({ t, screen: SCREEN, ...d });
+}
+if (FROM_QR) track('open', { qr: true });
+
+/* ---------------- رمز QR وشاشة الترحيب (للشاشة الرئيسية فقط) ---------------- */
+let attractOn = false, attractT = null, attractI = Math.floor(Math.random() * 5);
+const attractEl = $('#attract');
+function initScreen() {
+  if (!SCREEN) return;
+  document.body.classList.add('screen');
+  try {
+    const url = `${location.origin}/?from=qr`, svg = window.NazihQR.svg(url);
+    $$('.qr-code').forEach((el) => { el.innerHTML = svg; });
+  } catch (e) { console.warn('QR:', e?.message); document.body.classList.add('no-qr'); }
+}
+function attractSay() {
+  clearTimeout(attractT);
+  if (!attractOn) return;
+  attractT = setTimeout(attractSay, CONFIG.attractEverySeconds * 1000);
+  if (busy || recState || speakingNow || didTalking || autoMic?.recording || document.hidden) return;
+  speak(CONFIG.attractLines[attractI++ % CONFIG.attractLines.length]);       // إن لم يُلمس الجهاز بعد فتح الصفحة يمنع المتصفح الصوت، فتبقى الدعوة مكتوبة فقط
+}
+function enterAttract() {
+  if (!SCREEN || !CONFIG.attract || attractOn) return;
+  attractOn = true; document.body.classList.add('attract'); attractEl.hidden = false;
+  try { if (did?.simli) did.stop(); } catch {}                                // لا تبقى جلسة Simli مفتوحة والشاشة فاضية
+  attractT = setTimeout(attractSay, 4000);
+}
+function leaveAttract() {
+  if (!attractOn) return;
+  attractOn = false; clearTimeout(attractT); document.body.classList.remove('attract'); attractEl.hidden = true;
+  if (speakingNow) stopSpeaking();
+}
+attractEl?.addEventListener('click', () => { ensureAudio(); });
 
 /* ---------------- نافذة الإعدادات ---------------- */
 const dlg = $('#settings');
@@ -1550,20 +1660,24 @@ $('#startBtn').addEventListener('click', () => {
 
 /* ---------------- إعادة الضبط عند الخمول (للشاشة التفاعلية) ---------------- */
 let idleTimer;
-function resetIdle() {
+function resetIdle(keep) {
   clearTimeout(idleTimer);
+  if (keep !== true) leaveAttract();
   idleTimer = setTimeout(() => {
+    if (attractOn) return resetIdle(true);          // شاشة الترحيب شغالة: تبقى إلى أن يأتي زائر
     // لا يُمسح الحوار ونزيه يتكلم أو يسمع (في الاستماع التلقائي يتحاور الزائر دقائق بدون أي لمسة)
-    if (talking || busy || recState || speakingNow || didTalking || autoMic?.recording) return resetIdle();
+    if (talking || busy || recState || speakingNow || didTalking || autoMic?.recording) return resetIdle(true);
     if (didDropped) { location.reload(); return; }      // الأفتار الحي تعطل سابقاً: أعد التحميل لاسترجاعه
     if (dlg.open) dlg.close();
     closeSheets(); newChat();
     followUps = []; renderCarousel(true);
     $('#lawSearch').value = ''; renderLaw();
     onboard.hidden = !CONFIG.showWelcome;
+    sessionOpen = false;                             // الزائر التالي يُحسب جلسة جديدة
+    enterAttract();
   }, CONFIG.idleResetSeconds * 1000);
 }
-['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, resetIdle));
+['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, () => resetIdle()));
 
 /* ---------------- البداية ---------------- */
 applySettings();
@@ -1571,4 +1685,6 @@ initDID();
 renderCarousel(true);
 showCaption('', CONFIG.greeting);
 if (TEST || !CONFIG.showWelcome) onboard.hidden = true;
+initScreen();
 resetIdle();
+if (!TEST) enterAttract();                         // الشاشة الرئيسية تبدأ بالترحيب إلى أن يأتي أول زائر

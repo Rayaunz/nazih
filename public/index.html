@@ -69,6 +69,19 @@
     <!-- غطاء يظهر مكان نافذة «Are you still here?» عند انقطاع D-ID بسبب الخمول -->
     <div id="didCover" aria-hidden="true"><span>لحظة.. نزيه يستعد</span></div>
     <div class="talk-badge" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <!-- رمز QR (يظهر على الشاشة الرئيسية فقط): الزائر يصوّره ويكمّل على جواله -->
+    <div id="qrBadge" class="glass" aria-hidden="true"><div class="qr-code"></div><span>صوّر الرمز<br>وكمّل على جوالك</span></div>
+  </div>
+  <!-- شاشة الترحيب: تظهر على الشاشة الرئيسية وقت الخمول، ونزيه يرحّب بالمارّين كل شوي -->
+  <div id="attract" hidden>
+    <div class="attract-card glass">
+      <div class="attract-text">
+        <h2>حياك الله، أنا نزيه</h2>
+        <p class="big">اسألني عن النزاهة ومكافحة الفساد</p>
+        <p class="how"><svg viewBox="0 0 24 24"><path class="fill" d="M12 15a3.500 3.500 0 0 0 3.500-3.500v-6a3.500 3.500 0 0 0-7 0v6A3.500 3.500 0 0 0 12 15z"/><path d="M6 11.500a6 6 0 0 0 12 0M12 17.500V21"/></svg>المس الشاشة وتكلّم</p>
+      </div>
+      <div class="attract-qr"><div class="qr-code"></div><span>أو صوّر الرمز وكمّل على جوالك</span></div>
+    </div>
   </div>
 
   <div class="lower">
@@ -127,6 +140,11 @@
           <p>اعتمدتها الجمعية العامة للأمم المتحدة عام 2003م، وفُتح باب التوقيع عليها في 9 ديسمبر من العام نفسه — ولذلك يُحتفى بهذا التاريخ عالمياً يوماً لمكافحة الفساد. والمملكة دولة طرف فيها.</p>
         </article>
       </div>
+    </section>
+
+    <section class="sheet" id="sheet-scenario" hidden aria-label="وش تسوي لو؟">
+      <header><h2>وش تسوي لو؟</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <div class="sheet-body" id="scn"></div>
     </section>
 
     <section class="sheet" id="sheet-report" hidden aria-label="قنوات البلاغ">
@@ -197,6 +215,8 @@
 <script src="js/law-data.js"></script>
 <script src="js/laws-extra.js"></script>
 <script src="js/quiz-data.js"></script>
+<script src="js/scenario-data.js"></script>
+<script src="js/qr.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
