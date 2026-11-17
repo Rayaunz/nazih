@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<script src="js/runtime.js"></script>   <!-- إعدادات من الخادم (هل الوجه الحي مفعّل للجوالات؟) -->
 <script>
   /* شخصية نزيه:
        'own' : أفتار الموقع الخاص (صورة الاستديو يحرّكها الموقع نفسه، والصوت من خادمك). بدون D-ID وبدون اشتراكها.
@@ -32,13 +33,15 @@
      للتجربة على جهاز واحد دون تغيير الملف: ‎/?avatar=did‎ أو ‎/?avatar=own‎ (يُحفظ في ذلك الجهاز). */
   var AVATAR = 'own';
   (function () {
-    var q = new URLSearchParams(location.search), t = q.get('test'), a = q.get('avatar'), mode = AVATAR;
+    var q = new URLSearchParams(location.search), t = q.get('test'), a = q.get('avatar'), mode = AVATAR, saved = null;
     try {
       if (a === 'own' || a === 'did' || a === 'simli') localStorage.setItem('nazih.avatar', a);
       if (q.get('code')) localStorage.setItem('nazih.code', q.get('code'));
-      mode = localStorage.getItem('nazih.avatar') || AVATAR;
+      saved = localStorage.getItem('nazih.avatar'); mode = saved || AVATAR;
     } catch (e) {}
-    window.NAZIH_SIMLI = !t && mode === 'simli';
+    /* الشاشة الرئيسية = جهاز فُتح عليه ‎/?avatar=simli‎. أما الجوالات فيظهر لها الوجه الحي فقط إذا فعّله الخادم (SIMLI_PHONES=1) */
+    window.NAZIH_SCREEN = !t && mode === 'simli';
+    window.NAZIH_SIMLI = !t && (mode === 'simli' || (!saved && mode === 'own' && window.NAZIH_PHONE_SIMLI === true));
     window.NAZIH_DID = !t && mode === 'did' || t === 'did';
     /* نعرض شكل الصفحة النهائي مع صورة نزيه فوراً */
     if (window.NAZIH_DID) document.body.className += ' did-on did-loading';

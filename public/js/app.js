@@ -752,7 +752,7 @@ function makeSimliAvatar(own) {
       try {
         const { SimliClient, LogLevel } = await loadSdk();
         let code = ''; try { code = localStorage.getItem('nazih.code') || ''; } catch {}
-        const r = await fetch(`${CONFIG.apiBase}/api/simli-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portrait: innerHeight > innerWidth, code }) });
+        const r = await fetch(`${CONFIG.apiBase}/api/simli-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portrait: innerHeight > innerWidth, code, screen: !!window.NAZIH_SCREEN }) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.session_token) throw new Error(d.error || 'token');
         const c = new SimliClient(d.session_token, video, audio, null, LogLevel?.ERROR ?? LogLevel?.INFO);
@@ -802,7 +802,7 @@ function makeSimliAvatar(own) {
       async speak({ input }) {
         const my = ++token;
         if (attractOn) return own.functions.speak({ input });                   // ترحيب الخمول بصورة نزيه وصوته: لا يفتح جلسة Simli ولا يستهلك دقائقها
-        const ok = client ? true : await Promise.race([connect(), sleep(CONFIG.simliConnectWait * 1000).then(() => false)]);
+        const ok = client ? true : await Promise.race([connect(), sleep((window.NAZIH_SCREEN ? CONFIG.simliConnectWait : 5) * 1000).then(() => false)]);   // الجوال لا ينتظر طويلاً إن امتلأت الجلسات
         if (my !== token) return;
         if (!ok || !client) return own.functions.speak({ input });             // الاحتياطي: صورة نزيه وصوته
         // الصوت يصل متدفقاً من الخادم ويُرسل إلى Simli أول بأول، فيبدأ الكلام قبل اكتمال توليد المقطع
@@ -1663,7 +1663,7 @@ $('#certForm')?.addEventListener('submit', async (e) => {
 
 /* ---------------- الإحصائيات (أعداد مجهولة تُرسل للخادم، بدون أسماء ولا تسجيل صوت) ---------------- */
 const SCREEN = (() => {                              // هل هذا الجهاز هو الشاشة الرئيسية؟ (وجه Simli، أو ‎?screen=1‎ مرة واحدة)
-  try { const q = params.get('screen'); if (q === '1' || q === '0') localStorage.setItem('nazih.screen', q); if (localStorage.getItem('nazih.screen') === '0') return false; return !!window.NAZIH_SIMLI || localStorage.getItem('nazih.screen') === '1'; } catch { return !!window.NAZIH_SIMLI; }
+  try { const q = params.get('screen'); if (q === '1' || q === '0') localStorage.setItem('nazih.screen', q); if (localStorage.getItem('nazih.screen') === '0') return false; return !!window.NAZIH_SCREEN || localStorage.getItem('nazih.screen') === '1'; } catch { return !!window.NAZIH_SCREEN; }
 })();
 const FROM_QR = params.get('from') === 'qr';
 const DEV = (() => { try { let d = localStorage.getItem('nazih.dev'); if (!d) { d = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem('nazih.dev', d); } return d; } catch { return ''; } })();

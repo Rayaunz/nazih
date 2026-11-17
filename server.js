@@ -446,16 +446,23 @@ const SIMLI_CODE = process.env.SIMLI_CODE || '';
 const SIMLI_BASE = process.env.SIMLI_BASE || 'https://api.simli.ai';
 const SIMLI_IDLE = Number(process.env.SIMLI_IDLE_SECONDS || 120);       // تُقفل الجلسة بعد هذا السكوت فلا تُحسب دقائق والشاشة واقفة
 const SIMLI_MAX = Number(process.env.SIMLI_MAX_SECONDS || 1800);        // أقصى مدة للجلسة الواحدة ثم يُعاد الاتصال عند الحاجة
+/* الوجه الحي للجوالات (اختياري): SIMLI_PHONES=1. كل جوال يفتح جلسة تُحسب دقائقها، وعدد الجلسات المتزامنة محدود بخطتك في Simli
+   (Hobby جلستان، Pro عشر، Scale خمسون). من يزيد على الحد يرى صورة نزيه وصوته تلقائياً. جلسة الجوال تُقفل أسرع من الشاشة لتوفير الدقائق. */
+const SIMLI_PHONES = /^(1|true|yes)$/i.test(process.env.SIMLI_PHONES || '') && !!SIMLI_KEY && !!SIMLI_FACE;
+const SIMLI_PHONE_IDLE = Number(process.env.SIMLI_PHONE_IDLE_SECONDS || 40);
+const SIMLI_PHONE_MAX = Number(process.env.SIMLI_PHONE_MAX_SECONDS || 300);
 async function handleSimliToken(req, res) {
   if (!SIMLI_KEY || !SIMLI_FACE) return sendJSON(res, 503, { error: 'Simli غير مضبوط: أضف SIMLI_API_KEY و SIMLI_FACE_ID في Environment' });
   const body = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}');
-  if (SIMLI_CODE && body.code !== SIMLI_CODE) return sendJSON(res, 403, { error: 'رمز الشاشة غير صحيح' });
+  const isScreen = body.screen === true;
+  if (!isScreen && !SIMLI_PHONES) return sendJSON(res, 403, { error: 'الوجه الحي للشاشة الرئيسية فقط' });
+  if (isScreen && SIMLI_CODE && body.code !== SIMLI_CODE) return sendJSON(res, 403, { error: 'رمز الشاشة غير صحيح' });
   const portrait = body.portrait === true;
   const r = await fetch(`${SIMLI_BASE}/compose/token`, {
     method: 'POST',
     headers: { 'x-simli-api-key': SIMLI_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      faceId: SIMLI_FACE, handleSilence: true, maxSessionLength: SIMLI_MAX, maxIdleTime: SIMLI_IDLE,
+      faceId: SIMLI_FACE, handleSilence: true, maxSessionLength: isScreen ? SIMLI_MAX : SIMLI_PHONE_MAX, maxIdleTime: isScreen ? SIMLI_IDLE : SIMLI_PHONE_IDLE,
       streaming_width: portrait ? 720 : 1280, streaming_height: portrait ? 1280 : 720,     // الشاشة الطولية 9:16 والعرضية 16:9
     }),
     signal: withTimeout(20_000),
@@ -626,6 +633,7 @@ http.createServer(async (req, res) => {
     // روابط قصيرة: ‎/quiz‎ صفحة التحدي للجوال، ‎/screen2‎ شاشة «جرّب نزيه من جوالك»، ‎/screen3‎ شاشة «تحدي النزاهة»
     { const m = req.url.match(/^\/(quiz|screen2|screen3)\/?(\?.*)?$/);
       if (m) req.url = m[1] === 'quiz' ? '/quiz.html' + (m[2] || '') : '/screen.html?show=' + (m[1] === 'screen3' ? 'quiz' : 'site'); }
+    if (/^\/js\/runtime\.js(\?.*)?$/.test(req.url)) { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }); return res.end(`window.NAZIH_PHONE_SIMLI=${SIMLI_PHONES};`); }
     serveStatic(req, res);
   } catch (e) {
     const timeout = e?.name === 'TimeoutError' || e?.name === 'AbortError';
@@ -634,6 +642,7 @@ http.createServer(async (req, res) => {
   }
 }).listen(PORT, () => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
+  if (SIMLI_PHONES) console.log(`✅ الوجه الحي مفعّل للجوالات أيضاً (تُقفل الجلسة بعد ${SIMLI_PHONE_IDLE} ثانية سكوت، وأقصاها ${SIMLI_PHONE_MAX} ثانية)`);
   console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
   console.log(`🔊 الصوت: ${TTS_PROVIDER}${TTS_PROVIDER === 'azure' ? ` (${AZ_VOICE} @ ${AZ_REGION})` : TTS_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ` (${TTS_VOICE})`}`);
   if (SCREEN_PROVIDER !== TTS_PROVIDER) console.log(`🔊 صوت الشاشة الرئيسية: ${SCREEN_PROVIDER}${SCREEN_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ''}`);
