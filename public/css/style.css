@@ -362,3 +362,8 @@ body.attract #caption,body.attract .mic-zone,body.attract .ptt-label{visibility:
 @media (max-aspect-ratio:1/1){ .attract-card{flex-direction:column;text-align:center;gap:calc(2.4*var(--u))} .attract-qr{width:calc(36*var(--u))} }
 @media (min-aspect-ratio:1/1){ body.screen:not(.no-qr) #qrBadge{top:calc(14*var(--u));width:calc(18*var(--u))} }
 body.did-on.ptt #scn{padding-bottom:calc(24*var(--u))}
+
+/* v22: وجه Simli الحي يغطي خلفية الاستديو (وفيها الشعاران)، فيرجع الشعاران إلى الشريط العلوي ما دام الوجه الحي ظاهراً */
+@media (min-aspect-ratio:1/1){
+  body.simli.simli-live .top .logo{display:block;height:calc(9*var(--u));width:calc(11*var(--u))}
+}
