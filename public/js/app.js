@@ -547,7 +547,7 @@ const T = { marks: {}, mark(k) { if (DEBUG && !(k in this.marks)) { this.marks[k
     let el = document.getElementById('dbg');
     if (!el) { el = document.createElement('div'); el.id = 'dbg'; el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.78);color:#9f9;font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;direction:ltr;text-align:left;white-space:pre'; document.body.appendChild(el); }
     const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-');
-    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
+    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${this.stream ? '\nvoice stream : ' + this.stream : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
   } };
 
 /* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
@@ -831,7 +831,15 @@ function makeSimliAvatar(own) {
         if (my !== token) return;
         if (!r || !r.ok || !r.body || !client) return own.functions.speak({ input });
         if (DEBUG) { T.voice = r.headers.get('x-tts') || ''; }
-        const reader = r.body.getReader(); let carry = null, total = 0, t0 = 0;
+        /* v28: مخزن صغير قبل الإرسال. كان الصوت يُرسل إلى الوجه الحي فور وصوله من الشبكة، فإذا وصل متقطعاً أو أبطأ من سرعة الكلام
+           فرغ ما عند الوجه فسكت لحظات وتوقف الفم (تقطيع وعدم تطابق). الآن يُجمع أول 0.7 ثانية، وإن كان الوصول أبطأ من الكلام يُجمع المقطع كله ثم يُرسل متصلاً. */
+        const reader = r.body.getReader(); let carry = null, total = 0, t0 = 0, got = 0, tIn = 0, hold = [], held = 0, mode = 'pre';
+        const PRE = 22400, send = (u) => {                                                         // 22400 بايت = 0.7 ثانية
+          for (let i = 0; i < u.length; i += 6000) client.sendAudioData(u.slice(i, i + 6000));
+          if (!total && u.length) { t0 = performance.now(); audio.volume = settings.volume; own.emit('TALKING'); stopTalk(); }
+          total += u.length;
+        };
+        const flush = () => { const h = hold; hold = []; held = 0; h.forEach(send); };
         try {
           for (;;) {
             const { done, value } = await reader.read();
@@ -840,11 +848,19 @@ function makeSimliAvatar(own) {
             let u = value;
             if (carry) { const m = new Uint8Array(carry.length + u.length); m.set(carry); m.set(u, carry.length); u = m; carry = null; }
             if (u.length % 2) { carry = u.slice(u.length - 1); u = u.subarray(0, u.length - 1); }   // العيّنة 2 بايت: لا نقطعها
-            for (let i = 0; i < u.length; i += 6000) client.sendAudioData(u.slice(i, i + 6000));
-            if (!total && u.length) { t0 = performance.now(); audio.volume = settings.volume; own.emit('TALKING'); stopTalk(); }
-            total += u.length;
+            if (!u.length) continue;
+            if (!tIn) tIn = performance.now();
+            got += u.length;
+            if (mode === 'pass') { send(u); continue; }
+            hold.push(u); held += u.length;
+            if (mode === 'pre' && held >= PRE) {
+              const el = Math.max(1, performance.now() - tIn), speed = (got / 32000) / (el / 1000);   // سرعة الوصول ÷ سرعة الكلام
+              if (el < 60 || speed >= 1.3) { mode = 'pass'; flush(); } else mode = 'full';            // وصول بطيء: انتظر المقطع كاملاً
+            }
           }
-        } catch (e) { console.warn('Simli stream:', e?.message); }
+          if (my === token && client) flush();
+        } catch (e) { console.warn('Simli stream:', e?.message); if (my === token && client) flush(); }
+        if (DEBUG && got) { T.stream = `${((got / 32000) / (Math.max(1, performance.now() - tIn) / 1000)).toFixed(1)}x ${mode}`; T.show(); }
         if (!total) return own.functions.speak({ input });
         const remain = (total / 32000) * 1000 - (performance.now() - t0) + 200;                     // 32000 بايت = ثانية صوت
         stopTalk(); talkT = setTimeout(() => { talkT = null; if (my === token) own.emit('IDLE'); }, Math.max(200, remain));
