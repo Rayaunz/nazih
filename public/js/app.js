@@ -656,7 +656,7 @@ function ttsBuffer(text) {            // الطلب نفسه لا يتكرر: م
   let p = ttsCache.get(text);
   if (p) return p;
   p = (async () => {
-    const r = await fetch(`${CONFIG.apiBase}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const r = await fetch(`${CONFIG.apiBase}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, screen: SCREEN }) });
     if (!r.ok) throw new Error('tts');
     return audioCtx.decodeAudioData(await r.arrayBuffer());
   })();
@@ -775,7 +775,7 @@ function makeSimliAvatar(own) {
   function pcmFetch(text) {
     let p = pcmPending.get(text);
     if (!p) {
-      p = fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      p = fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, screen: SCREEN }) });
       p.catch(() => {});
       if (pcmPending.size > 12) pcmPending.delete(pcmPending.keys().next().value);
       pcmPending.set(text, p);

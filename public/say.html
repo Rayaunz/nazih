@@ -29,6 +29,8 @@
   <h1>تجربة نطق نزيه</h1>
   <p>صفحة لك أنت فقط (ما تظهر للزوار). اكتب أي جملة واسمعها بصوت نزيه قبل ما تعتمدها.</p>
 
+  <div class="card"><label>أسمع بصوت: <select id="who" style="font:inherit;padding:6px 10px;border-radius:8px"><option value="1">الشاشة الرئيسية</option><option value="0">الجوالات</option></select></label></div>
+
   <h2>١. لفظ الجلالة</h2>
   <p>اضغط كل رقم واسمع، ثم قل لي أي رقم نطق «الله» مفخّمة صح.</p>
   <div class="card" id="opts"></div>
@@ -52,7 +54,7 @@
     msg.textContent = ''; if (audio) { audio.pause(); audio = null; }
     btn.disabled = true;
     try {
-      const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, screen: $('#who').value === '1' }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'تعذّر توليد الصوت');
       audio = new Audio(URL.createObjectURL(await r.blob())); await audio.play();
     } catch (e) { msg.textContent = e.message; }

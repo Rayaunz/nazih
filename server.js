@@ -263,6 +263,9 @@ const AZ_BASE = process.env.AZURE_TTS_BASE || `https://${AZ_REGION}.tts.speech.m
 const EL_KEY = process.env.ELEVENLABS_API_KEY || '', EL_VOICE = process.env.ELEVENLABS_VOICE_ID || '', EL_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_flash_v2_5';
 const EL_BASE = process.env.ELEVENLABS_BASE || 'https://api.elevenlabs.io';
 const TTS_PROVIDER = (process.env.TTS_PROVIDER || (AZ_KEY && AZ_REGION ? 'azure' : EL_KEY && EL_VOICE ? 'elevenlabs' : 'openai')).toLowerCase();
+/* صوتان: صوت للشاشة الرئيسية وصوت لبقية الأجهزة (الجوالات). إذا وُجد مفتاحا Azure و ElevenLabs معاً فالشاشة الرئيسية
+   تنطق بصوت ElevenLabs والجوالات بصوت Azure تلقائياً (أوفر: الصوت الأغلى على جهاز واحد). للتحكم يدوياً: TTS_SCREEN_PROVIDER. */
+const SCREEN_PROVIDER = (process.env.TTS_SCREEN_PROVIDER || (EL_KEY && EL_VOICE ? 'elevenlabs' : TTS_PROVIDER)).toLowerCase();
 const xml = (t) => String(t).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
 function ttsRequest(provider, text, pcm, signal) {       // يرجع { r, rate } حيث rate تردد الـ PCM الخام
   if (provider === 'azure') {
@@ -333,33 +336,34 @@ function sayable(text, allah = ALLAH_PICK) {
   return t.replace(/\s+([،.؟!؛:])/g, '$1').replace(/،\s*،/g, '،').replace(/\s{2,}/g, ' ').trim();
 }
 let ttsWarned = 0;
-async function ttsFetch(text, pcm, signal) {
+async function ttsFetch(text, pcm, signal, want = TTS_PROVIDER) {
   text = text.startsWith('\u0002') ? text.slice(1) : sayable(text);          // \u0002 في أول النص = انطقه كما هو (صفحة التجربة)
-
-  if (TTS_PROVIDER !== 'openai') {
+  // الترتيب: الصوت المطلوب، ثم صوت الجوالات، ثم صوت OpenAI الاحتياطي حتى لا يسكت نزيه
+  for (const p of [...new Set([want, TTS_PROVIDER])]) {
+    if (p === 'openai') continue;
     try {
-      const out = await ttsRequest(TTS_PROVIDER, text, pcm, signal);
-      if (out.r.ok) return { ...out, provider: TTS_PROVIDER };
+      const out = await ttsRequest(p, text, pcm, signal);
+      if (out.r.ok) return { ...out, provider: p };
       const why = await out.r.text().catch(() => '');
-      if (ttsWarned++ < 20) console.warn(`TTS ${TTS_PROVIDER} ${out.r.status}: ${why.slice(0, 200)} — using OpenAI voice for this clip`);
-    } catch (e) { if (e.name === 'AbortError') throw e; if (ttsWarned++ < 20) console.warn(`TTS ${TTS_PROVIDER}: ${e.message} — using OpenAI voice`); }
+      if (ttsWarned++ < 20) console.warn(`TTS ${p} ${out.r.status}: ${why.slice(0, 200)} — trying the next voice for this clip`);
+    } catch (e) { if (e.name === 'AbortError') throw e; if (ttsWarned++ < 20) console.warn(`TTS ${p}: ${e.message} — trying the next voice`); }
   }
   return { ...(await ttsRequest('openai', text, pcm, signal)), provider: 'openai' };
 }
-
 async function handleTTS(req, res) {
   if (needKey(res)) return;
-  const { text, raw, allah } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
+  const { text, raw, allah, screen } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
   if (!text) return sendJSON(res, 400, { error: 'no text' });
   // raw: انطق النص كما هو. allah: جرّب طريقة كتابة أخرى للفظ الجلالة (لصفحة التجربة ‎/say.html‎)
-  const key = raw === true ? '\u0002' + String(text).slice(0, 1500) : Number.isInteger(allah) && allah >= 0 && allah <= 5 ? '\u0002' + sayable(String(text).slice(0, 1500), allah) : String(text).slice(0, 1500);
+  let key = raw === true ? '\u0002' + String(text).slice(0, 1500) : Number.isInteger(allah) && allah >= 0 && allah <= 5 ? '\u0002' + sayable(String(text).slice(0, 1500), allah) : String(text).slice(0, 1500);
+  const want = screen === true ? SCREEN_PROVIDER : TTS_PROVIDER, text0 = key; key = want + '|' + key;
   const cached = TTS_CACHE.get(key);
   if (cached) { TTS_CACHE.delete(key); TTS_CACHE.set(key, cached); return sendAudio(res, cached, true); }
-  const { r, provider } = await ttsFetch(key, false, withTimeout(30_000));
+  const { r, provider } = await ttsFetch(text0, false, withTimeout(30_000), want);
   if (!r.ok) { const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length < TTS_CACHE_MAX / 4) {
-    if (provider === TTS_PROVIDER) { TTS_CACHE.set(key, buf); ttsBytes += buf.length; }       // لا نحفظ الصوت الاحتياطي حتى يعود الصوت الأصلي حين يتعافى المزوّد
+    if (provider === want) { TTS_CACHE.set(key, buf); ttsBytes += buf.length; }       // لا نحفظ الصوت الاحتياطي حتى يعود الصوت الأصلي حين يتعافى المزوّد
     while (ttsBytes > TTS_CACHE_MAX) { const [k, v] = TTS_CACHE.entries().next().value; TTS_CACHE.delete(k); ttsBytes -= v.length; }
   }
   sendAudio(res, buf, false);
@@ -387,16 +391,16 @@ function makeResampler(ratio, gain) {                             // ratio = ت�
 const PCM_CACHE = new Map(); let pcmBytes = 0;
 async function handleTTSPcm(req, res) {
   if (needKey(res)) return;
-  const { text } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
+  const { text, screen } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
   if (!text) return sendJSON(res, 400, { error: 'no text' });
-  const key = String(text).slice(0, 1500);
+  const want = screen === true ? SCREEN_PROVIDER : TTS_PROVIDER, text0 = String(text).slice(0, 1500), key = want + '|' + text0;
   const head = { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Sample-Rate': '16000' };
   const cached = PCM_CACHE.get(key);
-  if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); res.writeHead(200, { ...head, 'Content-Length': cached.length, 'X-Cache': 'hit', 'X-TTS': TTS_PROVIDER }); return res.end(cached); }
+  if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); res.writeHead(200, { ...head, 'Content-Length': cached.length, 'X-Cache': 'hit', 'X-TTS': want }); return res.end(cached); }
   const ac = new AbortController(); const killer = setTimeout(() => ac.abort(), 40_000);
   res.on('close', () => { clearTimeout(killer); if (!res.writableEnded) ac.abort(); });
   let r, rate, provider;
-  try { ({ r, rate, provider } = await ttsFetch(key, true, ac.signal)); }
+  try { ({ r, rate, provider } = await ttsFetch(text0, true, ac.signal, want)); }
   catch (e) { clearTimeout(killer); if (!res.headersSent && !res.destroyed) sendJSON(res, 504, { error: 'تأخر الصوت' }); return; }
   if (!r.ok) { clearTimeout(killer); const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
   res.writeHead(200, { ...head, 'X-Cache': 'miss', 'X-Accel-Buffering': 'no', 'X-TTS': provider });
@@ -404,7 +408,7 @@ async function handleTTSPcm(req, res) {
   try { for await (const chunk of r.body) { const out = rs(Buffer.from(chunk)); if (out.length) { parts.push(Buffer.from(out)); res.write(out); } } }
   catch (e) { ok = false; if (e.name !== 'AbortError') console.warn('tts-pcm:', e.message); }
   clearTimeout(killer); res.end();
-  if (ok && parts.length && provider === TTS_PROVIDER) {
+  if (ok && parts.length && provider === want) {
     const buf = Buffer.concat(parts);
     if (buf.length < TTS_CACHE_MAX / 4) {
       PCM_CACHE.set(key, buf); pcmBytes += buf.length;
@@ -620,6 +624,7 @@ http.createServer(async (req, res) => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
   console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
   console.log(`🔊 الصوت: ${TTS_PROVIDER}${TTS_PROVIDER === 'azure' ? ` (${AZ_VOICE} @ ${AZ_REGION})` : TTS_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ` (${TTS_VOICE})`}`);
+  if (SCREEN_PROVIDER !== TTS_PROVIDER) console.log(`🔊 صوت الشاشة الرئيسية: ${SCREEN_PROVIDER}${SCREEN_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ''}`);
   console.log(`🧠 العقل: ${CHAT_PROVIDERS.map((p) => p.model).join(' ← احتياطي: ')}`);
   console.log(STATS_KEY ? `📊 لوحة الإحصائيات: /stats (${process.env.STATS_DIR ? 'حفظ دائم في ' + STATS_FILE : 'حفظ مؤقت: يُمسح عند إعادة النشر، نزّل نسخة من اللوحة'})` : 'ℹ️  لوحة الإحصائيات غير مفعّلة (أضف STATS_KEY)');
   if (!API_KEY) console.log('⚠️  لم يتم ضبط OPENAI_API_KEY — الموقع سيعمل لكن المساعد سيرد بإجابات محلية محدودة فقط.');
