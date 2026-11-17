@@ -390,3 +390,21 @@ body.did-on.ptt #sheet-cert .sheet-body{padding-bottom:calc(24*var(--u));justify
 .speech-box .btns .primary{margin:0}
 dialog .speech-box .btns .primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:700}
 dialog{max-height:94dvh;overflow-y:auto}
+
+/* ---------- v25: لا صورة ثابتة قبل الوجه الحي ---------- */
+body.simli:not(.simli-off) #simliBox{opacity:1}
+#simliWait{position:absolute;inset:0;z-index:1;display:grid;place-items:center;background:#efe9e1;transition:opacity .5s}
+body.simli-live #simliWait{opacity:0}
+#simliPoster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%}
+#simliBox .wall-logo{z-index:2}
+#simliWait.has-poster .sw-card{display:none}
+.sw-card{display:grid;justify-items:center;gap:calc(1.2*var(--u));color:#1B5E20;text-align:center}
+.sw-card b{font-size:calc(10*var(--u));line-height:1.2}
+.sw-card small{font-size:calc(3.6*var(--u));color:#52514e}
+.sw-ring{width:calc(18*var(--u));height:calc(18*var(--u));border-radius:50%;border:calc(.7*var(--u)) solid #cfe3d1;border-top-color:#1B5E20;opacity:.35}
+.sw-b{display:none}
+body.simli-connecting .sw-ring{opacity:1;animation:swspin 1s linear infinite}
+body.simli-connecting .sw-a{display:none}
+body.simli-connecting .sw-b{display:block}
+@keyframes swspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){body.simli-connecting .sw-ring{animation:none}}

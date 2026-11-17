@@ -736,7 +736,25 @@ function makeSimliAvatar(own) {
   const video = $('#simliVideo'), audio = $('#simliAudio');
   let client = null, connecting = null, sdk = null, fails = 0, token = 0, talkT = null, lastFail = 0;
   const live = () => !!client;
-  const setLive = (v) => document.body.classList.toggle('simli-live', v);
+  const wait = $('#simliWait'), poster = $('#simliPoster'), PKEY = 'nazih.poster.' + (innerHeight > innerWidth ? 'p' : 'l');
+  const B = document.body.classList;
+  const setLive = (v) => { B.toggle('simli-live', v); if (v) B.remove('simli-off'); };
+  /* v25: لا تظهر الصورة الثابتة القديمة قبل الوجه الحي. يُغطّى مكانها بلقطة من الوجه الحي نفسه (تُحفظ في الجهاز بعد أول اتصال)
+     فلا يتبدّل الشكل عند دخول الوجه، وإن لم توجد لقطة بعد تظهر بطاقة انتظار هادئة. الصورة القديمة تبقى فقط إن تعذّر الوجه الحي. */
+  function setPoster(url) { if (!poster || !url) return; poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
+  try { setPoster(localStorage.getItem(PKEY)); } catch {}
+  function grabPoster(tries = 8) {
+    try {
+      const w = video.videoWidth, h = video.videoHeight;
+      if (w && h) {
+        const c = document.createElement('canvas'), k = Math.min(1, 720 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
+        const g = c.getContext('2d'); g.drawImage(video, 0, 0, c.width, c.height);
+        const px = g.getImageData(c.width >> 1, c.height >> 1, 1, 1).data;
+        if (px[0] + px[1] + px[2] > 60) { const url = c.toDataURL('image/jpeg', 0.82); setPoster(url); try { localStorage.setItem(PKEY, url); } catch {} return; }   // ليست لقطة سوداء
+      }
+    } catch (e) { console.warn('poster:', e?.message); return; }
+    if (tries > 0 && client) setTimeout(() => grabPoster(tries - 1), 250);
+  }
   async function loadSdk() {
     if (sdk) return sdk;
     for (const url of CONFIG.simliSdk) {
@@ -748,6 +766,7 @@ function makeSimliAvatar(own) {
     if (client) return Promise.resolve(true);
     if (connecting) return connecting;
     if (fails >= 3 && performance.now() - lastFail < 120000) return Promise.resolve(false);     // بعد ثلاث محاولات فاشلة: استراحة دقيقتين
+    B.add('simli-connecting');
     connecting = (async () => {
       try {
         const { SimliClient, LogLevel } = await loadSdk();
@@ -759,15 +778,15 @@ function makeSimliAvatar(own) {
         c.on?.('stop', () => { if (client === c) { client = null; setLive(false); console.log('Simli: انتهت الجلسة'); } });
         c.on?.('error', (m) => console.warn('Simli:', m));
         await c.start();
-        client = c; fails = 0; audio.volume = settings.volume; setLive(true);
+        client = c; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster();
         CONFIG.fillers.forEach((f) => pcmFetch(f));                      // تجهيز عبارات الانتظار مسبقاً
         if (DEBUG) { T.connect = 'simli ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
         return true;
       } catch (e) {
-        console.warn('Simli connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false);
+        console.warn('Simli connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false); B.add('simli-off');   // تعذّر الوجه الحي: تظهر صورة نزيه ليكمل بها
         if (DEBUG) setStatus('Simli: ' + (e?.message || e), 'err');
         return false;
-      } finally { connecting = null; }
+      } finally { connecting = null; B.remove('simli-connecting'); }
     })();
     return connecting;
   }
@@ -796,13 +815,13 @@ function makeSimliAvatar(own) {
   return {
     own: true, simli: true,
     events: own.events,
-    ensure: connect,
+    ensure: connect, preload() { loadSdk().catch(() => {}); },
     prefetch(text) { if (client) pcmFetch(text); return !!client; },
     functions: {
       async speak({ input }) {
         const my = ++token;
         if (attractOn) return own.functions.speak({ input });                   // ترحيب الخمول بصورة نزيه وصوته: لا يفتح جلسة Simli ولا يستهلك دقائقها
-        const ok = client ? true : await Promise.race([connect(), sleep((window.NAZIH_SCREEN ? CONFIG.simliConnectWait : 5) * 1000).then(() => false)]);   // الجوال لا ينتظر طويلاً إن امتلأت الجلسات
+        const ok = client ? true : await Promise.race([connect(), sleep((window.NAZIH_SCREEN ? CONFIG.simliConnectWait : 8) * 1000).then(() => false)]);   // الجوال لا ينتظر طويلاً إن امتلأت الجلسات
         if (my !== token) return;
         if (!ok || !client) return own.functions.speak({ input });             // الاحتياطي: صورة نزيه وصوته
         // الصوت يصل متدفقاً من الخادم ويُرسل إلى Simli أول بأول، فيبدأ الكلام قبل اكتمال توليد المقطع
@@ -840,6 +859,7 @@ function makeSimliAvatar(own) {
   };
 }
 if (OWN) window.DID_AGENTS_API = window.NAZIH_SIMLI ? makeSimliAvatar(makeOwnAvatar()) : makeOwnAvatar();
+if (OWN && window.NAZIH_SIMLI) setTimeout(() => window.DID_AGENTS_API.preload(), 1200);   // مكتبة الوجه الحي تُحمَّل من فتح الصفحة (مجاناً) فيقصر الانتظار بعد اللمسة
 window.addEventListener('pagehide', () => { try { window.DID_AGENTS_API?.stop?.(); } catch {} });
 
 /* طابور النطق: ينطق أول جملة فور وصولها ثم بقية الرد.
