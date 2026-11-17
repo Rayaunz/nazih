@@ -748,13 +748,13 @@ function makeSimliAvatar(own) {
   const video = $('#simliVideo'), audio = $('#simliAudio');
   let client = null, connecting = null, sdk = null, fails = 0, token = 0, talkT = null, lastFail = 0;
   const live = () => !!client;
-  const wait = $('#simliWait'), poster = $('#simliPoster'), PKEY = 'nazih.poster.' + (innerHeight > innerWidth ? 'p' : 'l');
+  const wait = $('#simliWait'), poster = $('#simliPoster'), box = $('#simliBox'), pkey = () => 'nazih.poster.' + (innerHeight > innerWidth ? 'p' : 'l');
   const B = document.body.classList;
   const setLive = (v) => { B.toggle('simli-live', v); if (v) B.remove('simli-off'); };
   /* v25: لا تظهر الصورة الثابتة القديمة قبل الوجه الحي. يُغطّى مكانها بلقطة من الوجه الحي نفسه (تُحفظ في الجهاز بعد أول اتصال)
      فلا يتبدّل الشكل عند دخول الوجه، وإن لم توجد لقطة بعد تظهر بطاقة انتظار هادئة. الصورة القديمة تبقى فقط إن تعذّر الوجه الحي. */
-  function setPoster(url) { if (!poster || !url) return; poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
-  try { setPoster(localStorage.getItem(PKEY)); } catch {}
+  function setPoster(url) { if (!poster) return; if (!url) { poster.hidden = true; wait?.classList.remove('has-poster'); return; } poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
+  try { setPoster(localStorage.getItem(pkey())); } catch {}
   function grabPoster(tries = 8) {
     try {
       const w = video.videoWidth, h = video.videoHeight;
@@ -762,7 +762,7 @@ function makeSimliAvatar(own) {
         const c = document.createElement('canvas'), k = Math.min(1, 720 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
         const g = c.getContext('2d'); g.drawImage(video, 0, 0, c.width, c.height);
         const px = g.getImageData(c.width >> 1, c.height >> 1, 1, 1).data;
-        if (px[0] + px[1] + px[2] > 60) { const url = c.toDataURL('image/jpeg', 0.82); setPoster(url); try { localStorage.setItem(PKEY, url); } catch {} return; }   // ليست لقطة سوداء
+        if (px[0] + px[1] + px[2] > 60) { const url = c.toDataURL('image/jpeg', 0.82); setPoster(url); try { localStorage.setItem(pkey(), url); } catch {} return; }   // ليست لقطة سوداء
       }
     } catch (e) { console.warn('poster:', e?.message); return; }
     if (tries > 0 && client) setTimeout(() => grabPoster(tries - 1), 250);
@@ -816,6 +816,16 @@ function makeSimliAvatar(own) {
     return new Uint8Array(out.buffer);
   }
   const stopTalk = () => { clearTimeout(talkT); talkT = null; };
+  /* v32: إذا دوّر الزائر جواله والوجه الحي شغال بقي البث بمقاس الاتجاه القديم، فيتكبّر الوجه ويقع الشعاران فوقه.
+     الآن تُعاد الجلسة بمقاس الاتجاه الجديد، وتختفي شعارات الجدار ما دام البث طولياً. */
+  const markShape = () => box?.classList.toggle('tall', video.videoHeight > video.videoWidth);
+  video.addEventListener('resize', markShape); video.addEventListener('loadedmetadata', markShape);
+  const flip = () => {
+    let url = null; try { url = localStorage.getItem(pkey()); } catch {}
+    setPoster(url);
+    if (client) { const c = client; client = null; playEnd = 0; setLive(false); face('idle'); try { c.stop(); } catch {} connect(); }
+  };
+  try { const mq = matchMedia('(orientation: portrait)'); mq.addEventListener ? mq.addEventListener('change', flip) : mq.addListener(flip); } catch {}
   const face = (state, why = '') => { window.NAZIH_FACE = { state, why }; };      // تظهر في الإعدادات: هل الوجه الحي متصل ولماذا لا
   let playEnd = 0, via = 'own';                      // متى ينتهي ما أُرسل إلى الوجه الحي، وبأي طريق نُطق آخر مقطع
   const pcmPending = new Map();                       // طلبات صوت بدأت مسبقاً (المقطع التالي يُجهَّز أثناء نطق الحالي)
@@ -860,7 +870,7 @@ function makeSimliAvatar(own) {
         try {
           for (;;) {
             const { done, value } = await reader.read();
-            if (my !== token || !client) { try { reader.cancel(); } catch {} return; }
+            if (my !== token || !client) { try { reader.cancel(); } catch {} if (my === token) { stopTalk(); via = 'own'; own.emit('IDLE'); } return; }
             if (done) break;
             let u = value;
             if (carry) { const m = new Uint8Array(carry.length + u.length); m.set(carry); m.set(u, carry.length); u = m; carry = null; }

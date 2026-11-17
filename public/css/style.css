@@ -413,3 +413,6 @@ body.simli-connecting .sw-b{display:block}
 dialog .row select{font:inherit;font-size:.95em;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:#fff;color:inherit;max-width:58%}
 #faceState{font-size:.9em;color:#1B5E20;text-align:left;max-width:62%}
 #faceRow.bad #faceState{color:#b3261e}
+/* ---------- v32: شعارات الجدار للشاشات الكبيرة فقط، ولا تظهر فوق بث طولي ---------- */
+#simliBox.tall .wall-logo{display:none}
+@media (max-height:479px){#simliBox .wall-logo{display:none}}
