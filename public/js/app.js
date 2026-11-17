@@ -43,9 +43,11 @@ const CONFIG = {
   pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
   talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
   waitIncomplete: true,        // إذا توقف الزائر في نص الجملة («وش الفرق بين الرشوة و...») ينتظر نزيه تكملتها بدل أن يجاوب على سؤال ناقص
-  fillerEarly: true,           // v27: عبارة «أبشر، لحظة» تُقال فور انتهاء كلام الزائر (أثناء تحويل صوته إلى نص) بدل انتظار التحويل. false = كما كان
-  fillerAfterMs: 1100,         // بعد هذا الانتظار (ملّي ثانية) دون جواب يقول نزيه عبارة قصيرة. 0 = إيقاف
-  fillers: ['أبشر، لحظة.', 'سَمّ، لحظة.', 'أبشر يا بعد حيي.', 'أبشر.'],
+  /* v31: كلمة قصيرة قبل الجواب («أبشر»). كانت تُقال مع كل سؤال ومعها «لحظة» فأزعجت. الآن بلا «لحظة»، وافتراضياً لا تُقال إلا إذا تأخر الجواب.
+     ack: 'auto' عند تأخر الجواب فقط · 'always' مع كل سؤال صوتي فور انتهاء الكلام · 'never' لا تُقال. تُغيَّر من الإعدادات في الشاشة. */
+  ack: 'auto',
+  ackLateMs: 3000,             // في وضع auto: إذا مضت هذه المدة بعد فهم السؤال ولم يبدأ الجواب قال نزيه كلمة واحدة، ولا يكررها في سؤالين متتاليين
+  fillers: ['أبشر.', 'سَمّ.', 'طيّب.'],
   ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
   simliSdk: ['https://esm.sh/simli-client', 'https://cdn.jsdelivr.net/npm/simli-client/+esm'],   // مكتبة Simli للمتصفح (تُحمَّل عند الحاجة فقط)
   simliConnectWait: 9,         // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
@@ -169,6 +171,14 @@ function applySettings() {
   if (gainNode) gainNode.gain.value = settings.volume * VOICE_BOOST;
   const sa = document.getElementById('simliAudio'); if (sa) sa.volume = settings.volume;
   $('#setVol').value = settings.volume; $('#setVoice').checked = settings.voice; $('#setText').checked = settings.text; $('#setBig').checked = !!settings.big;
+  const sk = document.getElementById('setAck'); if (sk) sk.value = ackMode();
+  const fr = document.getElementById('faceRow');
+  if (fr) {
+    const f = window.NAZIH_FACE || { state: 'idle', why: '' };
+    fr.hidden = !window.NAZIH_SIMLI;
+    document.getElementById('faceState').textContent = f.state === 'live' ? 'متصل ✓' : f.state === 'connecting' ? 'يتصل الآن…' : f.state === 'off' ? 'غير متاح: ' + (f.why || 'تعذّر الاتصال').slice(0, 90) : 'يتصل عند أول سؤال';
+    fr.classList.toggle('bad', f.state === 'off');
+  }
 }
 
 /* ---------------- الصوت ---------------- */
@@ -288,7 +298,7 @@ function drawFace(c, t) {
   if (blinkT >= 0) { const p = (t - blinkT) / 180; k = p < 0.5 ? p * 2 : 2 - p * 2; if (p >= 1) { blinkT = -1; nextBlink = t + 2200 + Math.random() * 3800; k = 0; } }
   if (LOOK === 'blink') k = 1;
   if (LOOK === 'half') k = 0.5;
-  if (k > 0.03) drawLids(c, k);
+  if (k > 0.03 && !(window.NAZIH_SIMLI && !LOOK)) drawLids(c, k);
 }
 
 /* رمش طبيعي: جلد الجفن العلوي نفسه (من الصورة) ينزل فوق العين ومعه خط الرموش، عموداً عموداً، فلا يظهر أي لون مرسوم */
@@ -363,11 +373,12 @@ function drawOwn(t) {
   }
   const gp = Math.min(1, (t - gest.at) / gest.dur), gk = Math.sin(gp * Math.PI) * talkAmt;  // تصعد ثم ترجع
   const TA = talkAmt * (CONFIG.ownMouth || LOOK ? 1 : 0.45);            // بدون تحريك الفم: حركة الرأس أهدأ
-  const tilt = 0.0045 * Math.sin(t / 2700) + 0.002 * Math.sin(t / 1130 + 1) + TA * (0.007 * Math.sin(t / 830) + 0.004 * Math.sin(t / 410 + 2)) + gk * gest.tilt;
-  const nod = 1.6 * Math.sin(t / 1900) + TA * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 9 + mouthOpen * 1.5 + gk * gest.nod;
-  const sway = 2.2 * Math.sin(t / 3300) + TA * 2.5 * Math.sin(t / 1500 + 1) + gk * gest.sway;
-  const zoom = 0.0025 * Math.sin(t / 2300) + TA * 0.004 + emph * 0.006;
-  const brow = Math.min(3.2, emph * 9 + (gk > 0.6 ? 0.8 : 0));
+  const M = window.NAZIH_SIMLI && !LOOK ? 0 : 1;                         // v31: إذا تعذّر الوجه الحي تبقى الصورة ثابتة مع الصوت (رأس يتمايل وفم لا يتحرك شكله غريب)
+  const tilt = M * (0.0045 * Math.sin(t / 2700) + 0.002 * Math.sin(t / 1130 + 1) + TA * (0.007 * Math.sin(t / 830) + 0.004 * Math.sin(t / 410 + 2)) + gk * gest.tilt);
+  const nod = M * (1.6 * Math.sin(t / 1900) + TA * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 9 + mouthOpen * 1.5 + gk * gest.nod);
+  const sway = M * (2.2 * Math.sin(t / 3300) + TA * 2.5 * Math.sin(t / 1500 + 1) + gk * gest.sway);
+  const zoom = M * (0.0025 * Math.sin(t / 2300) + TA * 0.004 + emph * 0.006);
+  const brow = M * Math.min(3.2, emph * 9 + (gk > 0.6 ? 0.8 : 0));
   // --- طبقة نزيه: الصورة + الوجه المتحرك، ثم القناع ---
   const h = BODY.bottom - BODY.y;
   ownCtx.globalCompositeOperation = 'source-over';
@@ -547,7 +558,7 @@ const T = { marks: {}, mark(k) { if (DEBUG && !(k in this.marks)) { this.marks[k
     let el = document.getElementById('dbg');
     if (!el) { el = document.createElement('div'); el.id = 'dbg'; el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.78);color:#9f9;font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;direction:ltr;text-align:left;white-space:pre'; document.body.appendChild(el); }
     const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-');
-    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${this.stream ? '\nvoice stream : ' + this.stream : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
+    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${this.stream ? '\nvoice stream : ' + this.stream : ''}${this.ctx ? '\ncontext      : ' + this.ctx : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
   } };
 
 /* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
@@ -767,7 +778,7 @@ function makeSimliAvatar(own) {
     if (client) return Promise.resolve(true);
     if (connecting) return connecting;
     if (fails >= 3 && performance.now() - lastFail < 120000) return Promise.resolve(false);     // بعد ثلاث محاولات فاشلة: استراحة دقيقتين
-    B.add('simli-connecting');
+    B.add('simli-connecting'); face('connecting');
     connecting = (async () => {
       try {
         const { SimliClient, LogLevel } = await loadSdk();
@@ -776,16 +787,19 @@ function makeSimliAvatar(own) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.session_token) throw new Error(d.error || 'token');
         const c = new SimliClient(d.session_token, video, audio, null, LogLevel?.ERROR ?? LogLevel?.INFO);
-        c.on?.('stop', () => { if (client === c) { client = null; setLive(false); console.log('Simli: انتهت الجلسة'); } });
+        c.on?.('stop', () => { if (client === c) { client = null; setLive(false); face('idle'); console.log('Simli: انتهت الجلسة'); } });
         c.on?.('error', (m) => console.warn('Simli:', m));
-        await c.start();
-        client = c; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster();
-        CONFIG.fillers.forEach((f) => pcmFetch(f));                      // تجهيز عبارات الانتظار مسبقاً
+        // v31: مهلة للاتصال. بعض الشبكات (خصوصاً شبكات الجهات) تمنع البث المباشر فيبقى الاتصال معلّقاً بلا نهاية؛ بعد المهلة يكمل نزيه بصورته وصوته
+        try { await Promise.race([c.start(), sleep(14000).then(() => { throw new Error('انتهت مهلة الاتصال (قد تكون الشبكة تمنع البث المباشر)'); })]); }
+        catch (e) { try { c.stop?.(); } catch {} throw e; }
+        client = c; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster(); face('live');
+        if (ackMode() !== 'never') CONFIG.fillers.forEach((f) => pcmFetch(f));   // تجهيز كلمات الرد القصيرة مسبقاً
         if (DEBUG) { T.connect = 'simli ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
         return true;
       } catch (e) {
         console.warn('Simli connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false); B.add('simli-off');   // تعذّر الوجه الحي: تظهر صورة نزيه ليكمل بها
-        if (DEBUG) setStatus('Simli: ' + (e?.message || e), 'err');
+        face('off', String(e?.message || e));
+        if (DEBUG) { T.connect = 'simli FAILED: ' + String(e?.message || e).slice(0, 60); T.show(); setStatus('Simli: ' + (e?.message || e), 'err'); }
         return false;
       } finally { connecting = null; B.remove('simli-connecting'); }
     })();
@@ -802,6 +816,7 @@ function makeSimliAvatar(own) {
     return new Uint8Array(out.buffer);
   }
   const stopTalk = () => { clearTimeout(talkT); talkT = null; };
+  const face = (state, why = '') => { window.NAZIH_FACE = { state, why }; };      // تظهر في الإعدادات: هل الوجه الحي متصل ولماذا لا
   let playEnd = 0, via = 'own';                      // متى ينتهي ما أُرسل إلى الوجه الحي، وبأي طريق نُطق آخر مقطع
   const pcmPending = new Map();                       // طلبات صوت بدأت مسبقاً (المقطع التالي يُجهَّز أثناء نطق الحالي)
   function pcmFetch(text) {
@@ -952,12 +967,14 @@ async function speak(text) {
   await sp.end();
 }
 
-let fillerI = Math.floor(Math.random() * 4);
+let fillerI = Math.floor(Math.random() * 3);
 const nextFiller = () => CONFIG.fillers[fillerI++ % CONFIG.fillers.length];
+function ackMode() { return ['auto', 'always', 'never'].includes(settings.ack) ? settings.ack : CONFIG.ack; }
+let askCount = 0, lastAckAsk = -9;             // لا تتكرر «أبشر» في سؤالين متتاليين (وضع auto)
 /* v27: العبارة المبكرة. تبدأ مع تحويل الصوت إلى نص، ثم يكمل الجواب على المتكلّم نفسه دون انقطاع. إن لم يأتِ سؤال (ضجيج، خطأ) تنتهي بهدوء. */
 let earlyFill = null;
 function startEarlyFill(quiet, loudMs) {
-  if (!CONFIG.fillerEarly || CONFIG.fillerAfterMs <= 0 || !settings.voice || speechMode || pendingQ || speakingNow || didTalking) return;
+  if (ackMode() !== 'always' || !settings.voice || speechMode || pendingQ || speakingNow || didTalking) return;
   if (quiet && loudMs < 900) return;               // في الاستماع التلقائي: لا يرد على صوت قصير قد يكون ضجيجاً
   const sp = makeSpeaker(); sp.push(nextFiller()); T.mark('filler');
   earlyFill = { sp, my: session };
@@ -1069,58 +1086,147 @@ function lookupArticle(text) {
   if (!art) return `لم أجد المادة رقم ${num} في ${law.name}، وعدد مواده ${law.articles.filter((a) => !/مكرر|ملحق/.test(a.title)).length}.`;
   return `${art.title} من ${law.name}: ${art.body}`;
 }
-/* اختيار المواد الأقرب للسؤال لإرسالها مع السؤال إلى الذكاء الاصطناعي */
-const STOP = new Set('من في علي الي عن ما هو هي هل كم ماذا متي اين كيف وش ايش ليش لماذا هذا هذه ذلك التي الذي او ان اذا لو مع بين كل قد لا نعم ابي ابغي اريد عطني اذكر اقرا لي نص نظام النظام الماده ماده عقوبه العقوبه'.split(' '));
-let LAW_INDEX = null;
+/* اختيار ما يُرسل مع السؤال إلى الذكاء الاصطناعي.
+   v31: البحث صار يفهم كلام الناس. الزائر يقول «هدية» و«واسطة» و«أخاف أبلّغ»، والنظام يقول «عطية» و«وساطة» و«المبلِّغ»،
+   فكانت المواد الصحيحة لا تصل إلى النموذج فيجاوب من معلوماته العامة. الآن:
+   1) خريطة مفاهيم تربط كلام الزائر بالنظام والمواد التي تجاوب عنه.
+   2) السؤال القصير التابع («تأكد»، «وش عقوبتها؟») يُبحث عنه مع السؤال الذي قبله.
+   3) تُرسل مع المواد قائمة الأنظمة المضافة والأجوبة المعتمدة القريبة، فيعرف النموذج ما عنده وما ليس عنده. */
+const STOP = new Set(('من في علي الي عن ما هو هي هل كم ماذا متي اين كيف وش ايش ليش لماذا هذا هذه ذلك التي الذي او ان اذا لو مع بين كل قد لا نعم ابي ابغي اريد عطني اذكر اقرا لي نص نظام النظام الماده ماده عقوبه العقوبه ' +
+  'طيب زين يعني بس تري يا والله ممكن ودي تقدر قل قول شنو فيه عندي عندك عنده لازم يصير صار اللي الي كذا هاذي هذي ذي شي واحد احد اي ايه سلام عليكم حالك اخبارك علومك هلا مرحبا اهلا صباح مساء خير نور شكرا مشكور يعطيك عافيه سلامه بخير الحمد لله تمام انت اسمك الله شاء بسم يسلمك تسلم').split(' '));
+/* كلمة الزائر ← كلمات النظام */
+const SYN = {
+  هديه: ['عطيه', 'هدايا'], هدايا: ['عطيه'], اكراميه: ['اكراميات', 'عطيه'], فلوس: ['مال', 'مبلغ'], واسطه: ['وساطه'], فزعه: ['وساطه', 'رجاء'],
+  يسجن: ['سجن'], ينسجن: ['سجن'], حبس: ['سجن'], طرد: ['فصل'], يطرد: ['فصل'], يفصل: ['فصل'], ينفصل: ['فصل'], يفصلوني: ['فصل'], معاش: ['راتب'],
+  دكتور: ['عضو هيئه التدريس'], دوام: ['وقت العمل'], اجازتي: ['اجازه'], مدير: ['رئيس'], مديري: ['رئيس'], مزوره: ['زور'], مزور: ['زور'], يزور: ['زور'], وقعت: ['توقيع'], اوقع: ['توقيع'],
+  ابلغ: ['بلاغ', 'مبلغ'], يبلغ: ['بلاغ', 'مبلغ'], بلغت: ['بلاغ'], تبليغ: ['بلاغ'], استقيل: ['استقاله'], اغيب: ['غياب', 'انقطاع'], غبت: ['غياب', 'انقطاع'], اسمي: ['هويه'], هويتي: ['هويه'], يبصم: ['حضور', 'انصراف'], يعين: ['تعيين'], يحاكم: ['محكمه'], محاكمه: ['محكمه'], يحاسب: ['محاسبه', 'مساءله'], يراقب: ['رقابه'], يعينون: ['تعيين'], يعينه: ['تعيين'], اترقي: ['ترقيه'], يترقي: ['ترقيه'],
+};
+/* المفاهيم: إذا مسّ السؤال واحداً منها أُرسلت أنظمته ومواده المثبّتة ولو لم يذكر الزائر اسم النظام.
+   re على النص بعد التوحيد (norm). laws: أنظمة تُرجَّح موادها. pins: مواد تُرسل دائماً {النظام: [أرقام المواد]}. terms: كلمات بحث إضافية. */
+const CONCEPTS = [
+  { id: 'gift', re: /هدي[هت]|هدايا|اكرامي|حلاو[هت]|بقشيش|عمول[هت]|تحت الطاول|مقابل (?:مالي|مادي)|يرشي|ارشي|يدفع ل|دفعت ل|ادفع ل|اعطي(?:ه|ت)? (?:ال)?موظف|فلوس ل(?:ل)?موظف|عزيم|عزوم|عزم|عشاء|غداء|ذبيح|ضياف|(?:طلب|يطلب|يبي|يبغي|ياخذ|اخذ|استلم|عطيت|عطاني|عطاه|دفع)\S*\s+(?:\S+\s+){0,3}(?:فلوس|مبلغ|مال\b|مقابل|ريال)|معامل\S*.{0,40}(?:فلوس|مبلغ|مقابل)|(?:فلوس|مبلغ|مقابل).{0,40}معامل/, laws: ['bribery'], pins: { bribery: [1, 2, 3, 9, 10, 12, 16], civil: [12], 'hr-reg': [209] }, terms: ['عطيه', 'وعد'] },
+  { id: 'wasta', re: /واسط|وساط|وسيط|وسطاء|فزع[هت]|توصي[هت]|محسوبي|يتوسط|توسط|يعرف احد|معرف[هت] (?:ب|في)|قدم(?:ه|ني|ته)? علي|يقدمني|دور(?:ي|ه)? (?:قبل|بعد)/, laws: ['bribery'], pins: { bribery: [4, 10, 16], civil: [12] }, terms: ['وساطه', 'توصيه', 'رجاء'] },
+  { id: 'power', re: /نفوذ|استغل|يستغل|اساء[هت] استعمال|اساء[هت] استخدام|صلاحيات(?:ه|ي)?|منصب(?:ه|ي)?/, laws: ['nazaha'], pins: { bribery: [5], nazaha: [2], civil: [12], 'hr-reg': [209] }, terms: ['نفوذ', 'اساءه استعمال السلطه'] },
+  { id: 'report', re: /(?:^|\s)(?:ا|ي|ن|ت)بلغ(?:\s|$)|بلاغ|تبليغ|مبلغين|ابلاغ|اشتكي|شكوي|اخاف|خايف|يعرفون(?:ي)?|يكشف|هويتي|هويه (?:ال)?مبلغ|حمايه (?:ال)?مبلغ|سري[هت]|ينتقم|يضروني|يفصلوني|شاهد|شهود/, laws: ['protect', 'nazaha'], pins: { protect: [2, 15, 16, 17, 18, 22, 24], nazaha: [4] }, terms: ['بلاغ', 'مبلغ', 'هويه', 'حمايه'] },
+  { id: 'reward', re: /مكافا[هت] (?:ال)?(?:مبلغ|بلاغ|من يبلغ|اللي يبلغ)|يعطوني (?:شي|فلوس|مكافا)|لي مكافا/, laws: ['bribery'], pins: { bribery: [17] }, terms: ['مكافاه', 'ارشد'] },
+  { id: 'forgery', re: /زور|تزوير|مزور|توقيع|وقع(?:ت)? علي|اوقع|محضر|ختم|خاتم|وثيق[هت]|مستند|تقليد|تحريف|تقرير طبي|عذر طبي|سكليف|حضور وانصراف|بصم/, laws: ['forgery'], pins: { forgery: [1, 8, 9, 12, 19, 25] }, terms: ['زور', 'محرر'] },
+  { id: 'forgery-med', re: /تقرير طبي|عذر طبي|سكليف|اجاز[هت] مرضي|شهاد[هت] طبي/, laws: ['forgery'], pins: { forgery: [14] }, terms: [] },
+  { id: 'forgery-att', re: /بصم|حضور وانصراف|تحضير/, laws: ['forgery'], pins: { forgery: [16] }, terms: [] },
+  { id: 'forgery-exam', re: /اوراق (?:ال)?(?:اجاب|اختبار)|رصد (?:ال)?درجات|(?:عدل|غير|يعدل|يغير|تعديل|تغيير) (?:ال)?(?:درج|نتيج)/, laws: ['forgery'], pins: { forgery: [15] }, terms: [] },
+  { id: 'public', re: /المال العام|اموال (?:الدول|عام|الجه)|ممتلكات|سيار[هت] (?:العمل|الدوام|حكومي|الجه)|اختلاس|اختلس|يختلس|تبديد|عهد[هت]/, laws: ['nazaha'], pins: { nazaha: [2, 4, 18] }, terms: ['المال العام', 'جرائم فساد'] },
+  { id: 'wealth', re: /ثرو[هت]|تضخم|من اين لك|اثراء|غني فجا|زادت (?:ا)?موال/, laws: ['nazaha'], pins: { nazaha: [19] }, terms: ['ثروه', 'زياده لا تتناسب'] },
+  { id: 'corruption', re: /فساد|فاسد/, laws: ['nazaha'], pins: { nazaha: [2, 4, 18] }, terms: ['جرائم فساد'] },
+  { id: 'nazaha', re: /نزاه[هت]|هيئ[هت] (?:ال)?رقاب/, laws: ['nazaha'], pins: { nazaha: [3, 4] }, terms: [] },
+  { id: 'duties', re: /واجبات|محظور|ممنوع علي|يحظر|اسرار|افشاء|تجار[هت]|سجل تجاري|اشتغل ب|عمل (?:ثاني|اخر|اضافي)|اخلاقيات|مدون[هت] السلوك/, laws: ['civil', 'hr-reg'], pins: { civil: [11, 12, 13], 'hr-reg': [208, 209] }, terms: ['يحظر', 'يجب علي الموظف'] },
+  { id: 'discipline', re: /يفصل|فصل(?:ه|ي|وني)?(?:\s|$)|انذار|حسم|خصم (?:من )?(?:ال)?راتب|تاديب|مخالف[هت] (?:وظيفي|اداري|مالي)|غياب|اغيب|غبت|تاخر(?:ت)? عن|كف اليد|لفت نظر|جزاء(?:ات)?|تحقيق اداري/, laws: ['discipline', 'discipline-reg'], pins: {}, terms: ['مخالفه', 'جزاء'] },
+  { id: 'hr', re: /اجاز[هت]|ترقي[هت]|راتب|رواتب|بدل(?:ات)?(?:\s|$)|علاو[هت]|نقل(?:ي|ه)?(?:\s|$)|اعار[هت]|استقال[هت]|استقيل|تقاعد|دوام|تكليف|انتداب|ابتعاث|تعيين|توظيف|مرتب[هت]|تقويم الاداء|تقييم الاداء/, laws: ['hr-reg', 'civil'], pins: {}, terms: [] },
+  { id: 'faculty', re: /دكتور|دكاتر|استاذ|اعضاء? هيئ[هت] (?:ال)?تدريس|محاضر|معيد|تفرغ علمي|نصاب|ساعات (?:ال)?تدريس|مجلس (?:ال)?(?:قسم|كلي|جامع)|عميد|رئيس (?:ال)?قسم/, laws: ['faculty'], pins: {}, terms: ['عضو هيئه التدريس'] },
+  { id: 'contract', re: /متعاقد|غير سعودي|اجنبي|وافد|تذاكر|مكافا[هت] نهاي/, laws: ['non-saudi-staff'], pins: {}, terms: ['متعاقد'] },
+  { id: 'state', re: /الملك|ولي العهد|دستور|حقوق (?:ال)?(?:انسان|مواطن)|القضاء|السلط[هت] (?:ال)?(?:قضائي|تنفيذي|تنظيمي)/, laws: ['basic'], pins: {}, terms: [] },
+];
+const WHOLE = new Set(['bribery']);          // قصير وهو قلب الفعالية: يُرسل كاملاً متى مسّه السؤال
+const CTX_BUDGET = 13000;                    // حروف المواد المرسلة مع السؤال
+const FOLLOW_RE = /(?:^|\s)(?:تاكد|متاكد|اكيد|صدق|وضح|فصل لي|تفصيل|اكثر|كمل|اشرح|عيد|اعد|مثال|عقوبتها|عقوبته|عقوبتهم|حكمها|حكمه|عنها|عنه|فيها|منها|عليها|عليه|هالشي|نفس الشي|وغيره|وغيرها)(?:\s|$)/;
+let LAW_INDEX = null, prevQ = null;          // prevQ: آخر سؤال له موضوع (للأسئلة التابعة)
+const artNo = (a) => (/مكرر|ملحق|تمهيد/.test(a.title) ? null : articleNumber(a.title.replace(/^.*?ماده\s*|^المادة\s*/, '')));
 function buildIndex() {
   LAW_INDEX = [];
-  for (const law of textLaws()) for (const a of law.articles) LAW_INDEX.push({ law, a, n: norm(law.name + ' ' + a.title + ' ' + a.chapter + ' ' + a.body) });
+  for (const law of textLaws()) law.articles.forEach((a, i) => LAW_INDEX.push({ law, a, i, num: artNo(a), n: norm(law.name + ' ' + a.title + ' ' + a.chapter + ' ' + a.body) }));
 }
+/* كلمة لا ترد في أي مادة بصيغتها («لأستاذ»، «إجازتي»، «يفصلوني»): تُجرَّب بلا حرف الجر أو المضارعة وبلا الضمير، وتُعتمد أول صيغة ترد في الأنظمة */
+const STEMS = new Map(), DFS = new Map();
+const df = (t) => { if (!DFS.has(t)) DFS.set(t, LAW_INDEX.reduce((c, e) => c + (e.n.includes(t) ? 1 : 0), 0)); return DFS.get(t); };
+function stemFallback(t) {
+  if (STEMS.has(t)) return STEMS.get(t);
+  let out = t; const d0 = t.length >= 4 ? df(t) : 99;
+  // حرف جر ملتصق («لأستاذ»، «بسيارة»): إن كانت الكلمة بدونه أشيع في الأنظمة فهي المقصودة
+  const bare = t.replace(/^[لبكف](?=.{4})/, '');
+  if (bare !== t && !STOP.has(bare) && df(bare) >= Math.max(1, d0 * 1.5)) out = bare;
+  else if (d0 === 0) {
+    const sfx = (x) => { const y = x.replace(/(?:وني|ها|هم|هن|كم|نا|ني|ه|ي|ك)$/, ''); return y === x ? [] : /ت$/.test(y) ? [y, y.slice(0, -1) + 'ه'] : [y]; };
+    const verb = t.replace(/^[يتنا](?=.{3})/, ''), prep = t.replace(/^[لبكف](?=.{3})/, '');
+    const cands = [...sfx(t).filter((c) => c.length >= 4), ...(verb !== t ? [verb, ...sfx(verb)] : []), ...(prep !== t ? [prep, ...sfx(prep)].filter((c) => c.length >= 4) : [])];
+    out = cands.find((c) => c.length >= 3 && !STOP.has(c) && df(c) > 0) || t;
+  }
+  STEMS.set(t, out); return out;
+}
+const baseTerms = (n) => [...new Set(n.replace(/[^ء-ي0-9\s]/g, ' ').split(/\s+/).map((w) => w.replace(/^(وال|بال|لل|ال|و)(?=.{3})/, '')).map((w) => (w.length > 5 ? w.replace(/(ات|ين|ون)$/, '') : w)).filter((w) => w.length > 2 && !STOP.has(w)))];
+function analyze(n) {                        // ماذا يطلب هذا النص: أنظمة مذكورة بالاسم، مفاهيم، كلمات بحث
+  const lawIds = detectLaws(n), concepts = CONCEPTS.filter((c) => c.re.test(n)), base = baseTerms(n), terms = new Map();
+  base.forEach((t) => { terms.set(stemFallback(t), 1); (SYN[t] || []).forEach((x) => { if (!terms.has(x)) terms.set(x, 0.8); }); });
+  concepts.forEach((c) => c.terms.forEach((x) => { if (!terms.has(x)) terms.set(x, 0.8); }));
+  return { lawIds, concepts, base, terms };
+}
+/* سؤال تابع لما قبله؟ قصير أو فيه إحالة («تأكد»، «وش عقوبتها»، «طيب والوسيط؟») */
+const isFollowUp = (n, an) => !an.lawIds.length && (an.base.length <= 2 || n.length <= 18 || FOLLOW_RE.test(n) || (/^(?:طيب|زين|و|ف)\s*و/.test(n) && an.base.length <= 4));
+let lastCtxInfo = '';                        // لمربع القياس: ما الذي أُرسل مع آخر سؤال
 function retrieveContext(text) {
   if (!LAW_INDEX) buildIndex();
-  const n = norm(text), lawIds = detectLaws(n); if (lawIds.length) lastLawId = lawIds[0];
-  const terms = [...new Set(n.replace(/[^ء-ي0-9\s]/g, ' ').split(/\s+/).map((w) => w.replace(/^(وال|بال|لل|ال|و)/, '')).map((w) => (w.length > 5 ? w.replace(/(ات|ين|ون)$/, '') : w)).filter((w) => w.length > 2 && !STOP.has(w)))];
-  // إذا ذُكر نظام واحد بعينه وكان قصيراً يُرسل كاملاً، فيجد الذكاء الاصطناعي المادة المطلوبة أياً كانت صياغة السؤال
-  if (lawIds.length === 1) {
-    const named = textLaws().find((l) => l.id === lawIds[0]);
-    const whole = named ? named.articles.map((a) => `【${named.name} — ${a.title}】\n${a.body}\n\n`).join('') : '';
-    if (whole && whole.length <= 11000) return whole;
-  }
-  if (!terms.length && !lawIds.length) return '';
-  // وزن كل كلمة بحسب ندرتها: الكلمة التي ترد في أغلب المواد (مثل «هيئة التدريس» داخل لائحتها) لا تميّز مادة عن أخرى
-  const N = LAW_INDEX.length;
-  const counts = terms.map((tm) => LAW_INDEX.map((e) => e.n.split(tm).length - 1));
+  const n = norm(text), cur = analyze(n);
+  if (cur.lawIds.length) lastLawId = cur.lawIds[0];
+  const follow = prevQ && performance.now() - prevQ.at < 240000 && isFollowUp(n, cur) ? analyze(prevQ.n) : null;
+  if (!follow || cur.concepts.length) prevQ = { n: follow && !cur.concepts.length ? prevQ.n : n, at: performance.now() }; else prevQ.at = performance.now();
+  // دمج السؤال الحالي مع السابق (بوزن أقل) إن كان تابعاً له
+  const lawIds = [...new Set([...cur.lawIds, ...(follow ? follow.lawIds : [])])];
+  const concepts = [...new Set([...cur.concepts, ...(follow ? follow.concepts : [])])];
+  const cLaws = [...new Set(concepts.flatMap((c) => c.laws))].filter((id) => !lawIds.includes(id));
+  const terms = new Map(cur.terms); if (follow) follow.terms.forEach((wgt, t) => { if (!terms.has(t)) terms.set(t, wgt * 0.5); });
+  if (!lastLawId && cLaws.length) lastLawId = cLaws[0];
+  // وزن كل كلمة بحسب ندرتها: الكلمة التي ترد في أغلب المواد لا تميّز مادة عن أخرى
+  const N = LAW_INDEX.length, tl = [...terms.keys()];
+  const counts = tl.map((tm) => LAW_INDEX.map((e) => e.n.split(tm).length - 1));
   const idf = counts.map((cs) => Math.log(1 + N / (1 + cs.filter(Boolean).length)));
   const all = LAW_INDEX.map((e, i) => {
     let sc = 0;
-    terms.forEach((tm, t) => { const c = counts[t][i]; if (c) sc += Math.min(c, 3) * idf[t] * (tm.length > 4 ? 1.3 : 1); });
-    if (sc && lawIds.includes(e.law.id)) sc += 4;
+    tl.forEach((tm, t) => { const c = counts[t][i]; if (c) sc += Math.min(c, 3) * idf[t] * (tm.length > 4 ? 1.3 : 1) * terms.get(tm); });
+    if (sc && lawIds.includes(e.law.id)) sc += 4; else if (sc && cLaws.includes(e.law.id)) sc += 3;
     return { e, sc };
   });
-  const picked = [];
-  // لكل نظام مذكور: أفضل ثلاث مواد مطابقة + مادته الأولى (غالباً التعريفات)، حتى لا يضيع جزء من سؤال متعدد
-  for (const id of lawIds) {
-    const mine = all.filter((x) => x.e.law.id === id);
-    if (mine[0]) picked.push(mine[0]);
-    picked.push(...mine.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 3));
+  const byLaw = (id) => all.filter((x) => x.e.law.id === id), best = (xs, k) => xs.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, k);
+  const picked = [];                          // بترتيب الأولوية: المثبّتة، ثم النظام الكامل، ثم الأقرب من كل نظام، ثم الأقرب إجمالاً
+  for (const c of concepts) for (const [id, nums] of Object.entries(c.pins)) for (const num of nums) { const x = all.find((y) => y.e.law.id === id && y.e.num === num); if (x) picked.push({ ...x, pin: true }); }
+  const named = lawIds.length === 1 ? textLaws().find((l) => l.id === lawIds[0]) : null;
+  const wholeIds = [...new Set([...(named && named.articles.reduce((s, a) => s + a.body.length + 60, 0) <= 12600 ? [named.id] : []), ...[...lawIds, ...cLaws].filter((id) => WHOLE.has(id))])];
+  for (const id of wholeIds) picked.push(...byLaw(id).map((x) => ({ ...x, pin: true })));
+  for (const id of lawIds) { const mine = byLaw(id); picked.push(...best(mine, 6)); if (mine[0]) picked.push(mine[0]); }
+  if (!lawIds.length && !concepts.length) { const top = best(all, 6); picked.push(...top.filter((x) => x.sc >= top[0].sc * 0.5)); }   // سؤال عام: الأقرب فقط بلا حشو
+  else {
+    picked.push(...best(all, 6));
+    for (const id of cLaws) picked.push(...best(byLaw(id), lawIds.length ? 2 : 3));
+    picked.push(...best(all, 10));
   }
-  picked.push(...all.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 8));
-  let out = ''; const seen = new Set();
-  for (const { e } of picked) {
-    if (seen.has(e)) continue; seen.add(e);
-    const block = `【${e.law.name} — ${e.a.title}】\n${e.a.body.slice(0, 1600)}\n\n`;
-    if (out.length + block.length > 10000) break;
-    out += block;
+  const chosen = []; const seen = new Set(); let used = 0;
+  for (const x of picked) {
+    if (seen.has(x.e)) continue; seen.add(x.e);
+    const body = x.e.a.body.slice(0, x.pin ? 2600 : 1600), len = body.length + x.e.law.name.length + x.e.a.title.length + 12;
+    if (used + len > CTX_BUDGET) continue;    // لا تتوقف عند مادة طويلة: قد تتسع التي بعدها
+    used += len; chosen.push({ e: x.e, body });
   }
-  return out;
+  const order = [...new Set(chosen.map((c) => c.e.law.id))];
+  chosen.sort((a, b) => order.indexOf(a.e.law.id) - order.indexOf(b.e.law.id) || a.e.i - b.e.i);
+  // الأجوبة المعتمدة القريبة من السؤال (كتبها ووافق عليها فريق الفعالية)
+  const qn = follow ? prevQ.n + ' ' + n : n;
+  const hay = qn + ' ' + tl.join(' ');
+  const bank = BANK.map((b) => ({ b, m: b.k.filter((k) => hay.includes(k)).length })).filter((x) => x.m).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);
+  lastCtxInfo = (order.map((id) => `${id}(${chosen.filter((c) => c.e.law.id === id).length})`).join(' ') || '-') + (bank.length ? ' | bank:' + bank.map((b) => b.id).join(',') : '') + (follow ? ' | follow-up' : '');
+  return '【قائمة الأنظمة المضافة: هذه كلها، ولا يوجد غيرها】\n' + textLaws().map((l) => l.name).join('؛ ') + '.\n\n'
+    + (bank.length ? '【أجوبة معتمدة】\n' + bank.map((b) => `س: ${b.q}\nج: ${b.a}`).join('\n') + '\n\n' : '')
+    + '【المواد】\n' + (chosen.length ? chosen.map((c) => `【${c.e.law.name} — ${c.e.a.title}】\n${c.body}`).join('\n\n') : '(لم يُعثر في الأنظمة المضافة على مواد تتعلق بهذا السؤال)');
 }
 
+/* سؤال الزائر يطابق سؤالاً معتمداً (بعد حذف أدوات السؤال والحشو)؟ */
+function exactBank(text) {
+  const key = (x) => norm(x).replace(/[^ء-ي0-9\s]/g, ' ').split(/\s+/).map((w) => w.replace(/^(وال|بال|لل|ال|و)(?=.{3})/, '')).filter((w) => w.length > 1 && !STOP.has(w)).join(' ');
+  const k = key(text);
+  return k.length >= 6 ? BANK.find((b) => key(b.q) === k) || null : null;
+}
+function ctxFor(text) { const c = retrieveContext(text); if (DEBUG) { T.ctx = lastCtxInfo; T.show(); } return c; }
 async function ask(text, item = null) {
   text = (text || '').trim();
   if (!text) return;
   if (speechMode) { if (!askSrc) { dropEarlyFill(); return; } speechMode = false; }     // أثناء كلمة الافتتاح: أصوات القاعة لا تقطعها، واللمس أو الكتابة يقطعها
   const ef = earlyFill; earlyFill = null;
-  const early = ef && !item && ef.my === session ? ef.sp : null;      // «أبشر، لحظة» بدأت قبل قليل: الجواب يكمل بعدها
+  const early = ef && !item && ef.my === session ? ef.sp : null;      // «أبشر» بدأت قبل قليل (وضع always): الجواب يكمل بعدها
   if (ef && !early) ef.sp.end();
   if (!early && nazihActive()) interrupt();      // سؤال جديد أثناء الجواب: يقطع القديم
   resetIdle();                                   // السؤال بالصوت يُحسب تفاعلاً مثل اللمس
@@ -1136,20 +1242,23 @@ async function ask(text, item = null) {
   showCaption(text, '', true);
   history.push({ role: 'user', content: text });
   setStatus('نزيه يفكر...');
-  let reply, suggestions = [], hit = item, streamed = null;
+  askCount++;
+  let reply, suggestions = [], hit = item || exactBank(text), streamed = null;      // سؤال مطابق لسؤال معتمد: يُجاب بجوابه المعتمد كما هو
   const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
   if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
   track('q', { kind: hit ? 'bank' : exact ? 'exact' : 'ai', id: hit ? hit.id : '', src: takeSrc(), text: hit ? '' : text });
   if (!hit && !exact) {
-    // إذا تأخر الجواب أكثر من لحظة يقول نزيه عبارة قصيرة («أبشر، لحظة») فيحس الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع
+    // إذا تأخر الجواب قال نزيه كلمة واحدة («أبشر») فيعرف الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع. انظر CONFIG.ack
     let sp = early, firstSaid = false;
     if (sp) streamed = sp;
-    const fillT = CONFIG.fillerAfterMs > 0 && settings.voice ? setTimeout(() => {
+    const mode = ackMode(), lateMs = mode === 'always' ? 1100 : mode === 'auto' && askCount - lastAckAsk >= 2 ? CONFIG.ackLateMs : 0;
+    if (early) lastAckAsk = askCount;
+    const fillT = lateMs > 0 && settings.voice ? setTimeout(() => {
       if (my !== session || firstSaid || sp) return;
-      stopSpeaking(); sp = makeSpeaker(); streamed = sp; sp.push(nextFiller()); T.mark('filler');
-    }, CONFIG.fillerAfterMs) : null;
+      stopSpeaking(); sp = makeSpeaker(); streamed = sp; sp.push(nextFiller()); T.mark('filler'); lastAckAsk = askCount;
+    }, lateMs) : null;
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: retrieveContext(text), stream: true }), signal: (askAbort = new AbortController()).signal });
+      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: ctxFor(text), stream: true }), signal: (askAbort = new AbortController()).signal });
       if (r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
         if (DEBUG) T.model = r.headers.get('x-chat') || '';
         // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
@@ -1223,7 +1332,7 @@ async function runAction(name, said = '') {
 
 function newChat() {
   session++; stopSpeaking(); setBusy(false);
-  history = []; showCaption('', CONFIG.greeting); setStatus(CONFIG.idleStatus);
+  history = []; prevQ = null; lastLawId = null; askCount = 0; lastAckAsk = -9; showCaption('', CONFIG.greeting); setStatus(CONFIG.idleStatus);
 }
 
 $('#kbBtn').addEventListener('click', () => {      // مع الأفتار الحي: زر لوحة المفاتيح يُظهر خانة الكتابة ويخفيها
@@ -1780,6 +1889,7 @@ $('#setClose').addEventListener('click', () => dlg.close());
 dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 $('#setVol').addEventListener('input', (e) => { settings.volume = Number(e.target.value); saveSettings(); applySettings(); });
 $('#setVoice').addEventListener('change', (e) => { settings.voice = e.target.checked; if (!settings.voice) stopSpeaking(); saveSettings(); });
+$('#setAck')?.addEventListener('change', (e) => { settings.ack = e.target.value; saveSettings(); });
 $('#setText').addEventListener('change', (e) => { settings.text = e.target.checked; saveSettings(); applySettings(); });
 $('#setBig').addEventListener('change', (e) => { settings.big = e.target.checked; saveSettings(); applySettings(); });
 $('#setNew').addEventListener('click', () => { newChat(); closeSheets(); dlg.close(); });
