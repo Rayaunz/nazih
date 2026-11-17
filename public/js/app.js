@@ -43,10 +43,10 @@ const CONFIG = {
   pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
   talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
   waitIncomplete: true,        // إذا توقف الزائر في نص الجملة («وش الفرق بين الرشوة و...») ينتظر نزيه تكملتها بدل أن يجاوب على سؤال ناقص
-  /* v31: كلمة قصيرة قبل الجواب («أبشر»). كانت تُقال مع كل سؤال ومعها «لحظة» فأزعجت. الآن بلا «لحظة»، وافتراضياً لا تُقال إلا إذا تأخر الجواب.
-     ack: 'auto' عند تأخر الجواب فقط · 'always' مع كل سؤال صوتي فور انتهاء الكلام · 'never' لا تُقال. تُغيَّر من الإعدادات في الشاشة. */
+  /* كلمة قصيرة فور انتهاء كلام الزائر («أبشر») ليعرف أنه سُمع، ثم يأتي الجواب. بلا «لحظة».
+     ack: 'auto' مع أول سؤال صوتي فقط من كل زائر · 'always' مع كل سؤال صوتي · 'never' لا تُقال. تُغيَّر من الإعدادات في الشاشة.
+     (v33: أُلغيت الكلمة المتأخرة: كانت تُقال قبل الجواب بجزء من الثانية فتؤخره ولا تفيد.) */
   ack: 'auto',
-  ackLateMs: 3000,             // في وضع auto: إذا مضت هذه المدة بعد فهم السؤال ولم يبدأ الجواب قال نزيه كلمة واحدة، ولا يكررها في سؤالين متتاليين
   fillers: ['أبشر.', 'سَمّ.', 'طيّب.'],
   ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
   simliSdk: ['https://esm.sh/simli-client', 'https://cdn.jsdelivr.net/npm/simli-client/+esm'],   // مكتبة Simli للمتصفح (تُحمَّل عند الحاجة فقط)
@@ -980,11 +980,13 @@ async function speak(text) {
 let fillerI = Math.floor(Math.random() * 3);
 const nextFiller = () => CONFIG.fillers[fillerI++ % CONFIG.fillers.length];
 function ackMode() { return ['auto', 'always', 'never'].includes(settings.ack) ? settings.ack : CONFIG.ack; }
-let askCount = 0, lastAckAsk = -9;             // لا تتكرر «أبشر» في سؤالين متتاليين (وضع auto)
+const ACK_LEAD = /^\s*(?:أبشر|سَمّ|سم|طيّب|طيب)[.،!,\s]+/;
+let askCount = 0, acksThisChat = 0;            // في وضع auto تُقال «أبشر» مرة واحدة لكل زائر
 /* v27: العبارة المبكرة. تبدأ مع تحويل الصوت إلى نص، ثم يكمل الجواب على المتكلّم نفسه دون انقطاع. إن لم يأتِ سؤال (ضجيج، خطأ) تنتهي بهدوء. */
 let earlyFill = null;
 function startEarlyFill(quiet, loudMs) {
-  if (ackMode() !== 'always' || !settings.voice || speechMode || pendingQ || speakingNow || didTalking) return;
+  const m = ackMode();
+  if (m === 'never' || (m === 'auto' && acksThisChat > 0) || !settings.voice || speechMode || pendingQ || speakingNow || didTalking) return;
   if (quiet && loudMs < 900) return;               // في الاستماع التلقائي: لا يرد على صوت قصير قد يكون ضجيجاً
   const sp = makeSpeaker(); sp.push(nextFiller()); T.mark('filler');
   earlyFill = { sp, my: session };
@@ -1055,6 +1057,7 @@ function findBank(text) { const n = norm(text); return BANK.find((b) => norm(b.q
 const LAW_ALIASES = {
   // اللوائح قبل أنظمتها: «لائحة الانضباط» تُقدَّم على «نظام الانضباط»
   'discipline-reg': ['لائحه الانضباط', 'لائحه نظام الانضباط', 'التنفيذيه لنظام الانضباط', 'التنفيذيه للانضباط'], 'hr-reg': ['لائحه الموارد البشريه', 'التنفيذيه للموارد البشريه', 'لائحه الخدمه المدنيه', 'التنفيذيه لنظام الخدمه المدنيه'], 'non-saudi-staff': ['غير السعوديين', 'غير سعوديين', 'توظيف غير السعودي'],
+  'bog-proc': ['المرافعات امام ديوان المظالم', 'مرافعات ديوان المظالم', 'المرافعات امام الديوان', 'المرافعات الاداريه'], bog: ['ديوان المظالم', 'القضاء الاداري'],
   basic: ['اساسي للحكم', 'نظام الحكم', 'النظام الاساسي'], shura: ['شوري'], regions: ['نظام المناطق', 'مناطق المملكه', 'امير المنطقه', 'امراء المناطق'], cabinet: ['مجلس الوزراء'], bayah: ['بيعه'],
   nazaha: ['هيئه الرقابه', 'نظام نزاهه', 'نظام الهيئه', 'نظام مكافحه الفساد'], bribery: ['رشوه', 'رشاوي', 'راشي', 'مرتشي'], protect: ['مبلغين', 'حمايه المبلغ', 'الشهود', 'حمايه الشاهد'], aml: ['غسل الاموال', 'غسيل الاموال', 'غسل اموال', 'غسيل اموال'],
   forgery: ['تزوير', 'مزور', 'محرر رسمي', 'محرر عرفي'], discipline: ['انضباط'], civil: ['خدمه المدنيه', 'خدمه مدنيه'],
@@ -1063,7 +1066,8 @@ const LAW_ALIASES = {
 const textLaws = () => (window.LAWS || []).filter((l) => !l.pages && !l.pdf && l.id !== 'forgery-old');
 let lastLawId = null;
 function detectLaws(n) {                     // كل الأنظمة المذكورة في السؤال (قد يسأل الزائر عن أكثر من نظام)
-  const ids = Object.entries(LAW_ALIASES).filter(([, keys]) => keys.some((k) => n.includes(k))).map(([id]) => id);
+  const hits = Object.entries(LAW_ALIASES).map(([id, keys]) => [id, keys.filter((k) => n.includes(k))]).filter(([, ks]) => ks.length);
+  const ids = hits.filter(([id, ks]) => !ks.every((k) => { const left = hits.filter(([o]) => o !== id).flatMap(([, oks]) => oks).filter((ok) => ok.includes(k) && ok !== k).reduce((t, ok) => t.split(ok).join(' '), n); return !left.includes(k); })).map(([id]) => id);
   for (const l of textLaws()) if (l.id.startsWith('extra-') && n.includes(norm(l.name).split(' ').slice(0, 3).join(' '))) ids.push(l.id);
   return ids;
 }
@@ -1103,7 +1107,7 @@ function lookupArticle(text) {
    2) السؤال القصير التابع («تأكد»، «وش عقوبتها؟») يُبحث عنه مع السؤال الذي قبله.
    3) تُرسل مع المواد قائمة الأنظمة المضافة والأجوبة المعتمدة القريبة، فيعرف النموذج ما عنده وما ليس عنده. */
 const STOP = new Set(('من في علي الي عن ما هو هي هل كم ماذا متي اين كيف وش ايش ليش لماذا هذا هذه ذلك التي الذي او ان اذا لو مع بين كل قد لا نعم ابي ابغي اريد عطني اذكر اقرا لي نص نظام النظام الماده ماده عقوبه العقوبه ' +
-  'طيب زين يعني بس تري يا والله ممكن ودي تقدر قل قول شنو فيه عندي عندك عنده لازم يصير صار اللي الي كذا هاذي هذي ذي شي واحد احد اي ايه سلام عليكم حالك اخبارك علومك هلا مرحبا اهلا صباح مساء خير نور شكرا مشكور يعطيك عافيه سلامه بخير الحمد لله تمام انت اسمك الله شاء بسم يسلمك تسلم').split(' '));
+  'طيب زين يعني بس تري يا والله ممكن ودي تقدر قل قول شنو فيه عندي عندك عنده لازم يصير صار اللي الي كذا هاذي هذي ذي شي واحد احد اي ايه سلام عليكم حالك اخبارك علومك هلا مرحبا اهلا صباح مساء خير نور شكرا مشكور يعطيك عافيه سلامه بخير الحمد لله تمام انت اسمك الله شاء بسم يسلمك تسلم فرق مقارنه معني تعريف مفهوم مقصود قصد نوع انواع امثله مثال شرح اشرح وضح انظمه قوانين قانون سؤال جواب معلومه معلومات موضوع').split(' '));
 /* كلمة الزائر ← كلمات النظام */
 const SYN = {
   هديه: ['عطيه', 'هدايا'], هدايا: ['عطيه'], اكراميه: ['اكراميات', 'عطيه'], فلوس: ['مال', 'مبلغ'], واسطه: ['وساطه'], فزعه: ['وساطه', 'رجاء'],
@@ -1123,6 +1127,8 @@ const CONCEPTS = [
   { id: 'forgery-med', re: /تقرير طبي|عذر طبي|سكليف|اجاز[هت] مرضي|شهاد[هت] طبي/, laws: ['forgery'], pins: { forgery: [14] }, terms: [] },
   { id: 'forgery-att', re: /بصم|حضور وانصراف|تحضير/, laws: ['forgery'], pins: { forgery: [16] }, terms: [] },
   { id: 'forgery-exam', re: /اوراق (?:ال)?(?:اجاب|اختبار)|رصد (?:ال)?درجات|(?:عدل|غير|يعدل|يغير|تعديل|تغيير) (?:ال)?(?:درج|نتيج)/, laws: ['forgery'], pins: { forgery: [15] }, terms: [] },
+  { id: 'grievance', re: /تظلم|ديوان المظالم|(?:محكم[هت]|محاكم) (?:ال)?(?:اداري|استئناف)|قضاء (?:ال)?اداري|قرار(?:ات)? (?:ال)?اداري|الغاء (?:ال)?قرار|(?:اعترض|اعتراض|اطعن|طعن) (?:علي|في) (?:ال)?(?:قرار|حكم)|(?:^| )[ابلن]?رفعت? (?:ال)?(?:دعوي|قضي[هت])(?! (?:ال)?(?:جزائي|جنائي|عام))|دعوي (?:ال)?(?:اداري|تاديبي|تعويض|الغاء)|تعويض (?:عن (?:ال)?قرار|من (?:ال)?(?:جه[هت]|دوله|حكومه|وزاره|جامعه))|يوقف (?:ال)?تنفيذ|وقف (?:ال)?تنفيذ|استئناف|استانف|اعاد[هت] النظر/, laws: ['bog-proc', 'bog'], pins: { bog: [13], 'bog-proc': [5, 8, 9, 33] }, terms: ['تظلم', 'دعوي'] },
+  { id: 'attempt', re: /شروع|شرع في|حاول|محاول[هت]|ما (?:كمل|تم|نجح)/, laws: [], pins: { forgery: [20], bribery: [9], aml: [2], protect: [29] }, terms: [] },
   { id: 'public', re: /المال العام|اموال (?:الدول|عام|الجه)|ممتلكات|سيار[هت] (?:العمل|الدوام|حكومي|الجه)|اختلاس|اختلس|يختلس|تبديد|عهد[هت]/, laws: ['nazaha'], pins: { nazaha: [2, 4, 18] }, terms: ['المال العام', 'جرائم فساد'] },
   { id: 'wealth', re: /ثرو[هت]|تضخم|من اين لك|اثراء|غني فجا|زادت (?:ا)?موال/, laws: ['nazaha'], pins: { nazaha: [19] }, terms: ['ثروه', 'زياده لا تتناسب'] },
   { id: 'corruption', re: /فساد|فاسد/, laws: ['nazaha'], pins: { nazaha: [2, 4, 18] }, terms: ['جرائم فساد'] },
@@ -1185,12 +1191,13 @@ function retrieveContext(text) {
   // وزن كل كلمة بحسب ندرتها: الكلمة التي ترد في أغلب المواد لا تميّز مادة عن أخرى
   const N = LAW_INDEX.length, tl = [...terms.keys()];
   const counts = tl.map((tm) => LAW_INDEX.map((e) => e.n.split(tm).length - 1));
-  const idf = counts.map((cs) => Math.log(1 + N / (1 + cs.filter(Boolean).length)));
+  const dfs = counts.map((cs) => cs.filter(Boolean).length), idf = dfs.map((d) => Math.log(1 + N / (1 + d)));
   const all = LAW_INDEX.map((e, i) => {
     let sc = 0;
     tl.forEach((tm, t) => { const c = counts[t][i]; if (c) sc += Math.min(c, 3) * idf[t] * (tm.length > 4 ? 1.3 : 1) * terms.get(tm); });
     if (sc && lawIds.includes(e.law.id)) sc += 4; else if (sc && cLaws.includes(e.law.id)) sc += 3;
-    return { e, sc };
+    let m = 0, rare = false; tl.forEach((tm, t) => { if (counts[t][i]) { m++; if (dfs[t] <= N * 0.05) rare = true; } });
+    return { e, sc, m, rare };
   });
   const byLaw = (id) => all.filter((x) => x.e.law.id === id), best = (xs, k) => xs.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, k);
   const picked = [];                          // بترتيب الأولوية: المثبّتة، ثم النظام الكامل، ثم الأقرب من كل نظام، ثم الأقرب إجمالاً
@@ -1199,7 +1206,9 @@ function retrieveContext(text) {
   const wholeIds = [...new Set([...(named && named.articles.reduce((s, a) => s + a.body.length + 60, 0) <= 12600 ? [named.id] : []), ...[...lawIds, ...cLaws].filter((id) => WHOLE.has(id))])];
   for (const id of wholeIds) picked.push(...byLaw(id).map((x) => ({ ...x, pin: true })));
   for (const id of lawIds) { const mine = byLaw(id); picked.push(...best(mine, 6)); if (mine[0]) picked.push(mine[0]); }
-  if (!lawIds.length && !concepts.length) { const top = best(all, 6); picked.push(...top.filter((x) => x.sc >= top[0].sc * 0.5)); }   // سؤال عام: الأقرب فقط بلا حشو
+  if (!lawIds.length && !concepts.length) {     // سؤال عام: المتصل فعلاً فقط. مادة لا يجمعها بالسؤال إلا كلمة شائعة («جريمة») تُترك، وإلا ذكرها النموذج حشواً
+    const top = best(all.filter((x) => tl.length <= 1 || x.m >= 2 || x.rare), 6); if (top.length) picked.push(...top.filter((x) => x.sc >= top[0].sc * 0.5));
+  }
   else {
     picked.push(...best(all, 6));
     for (const id of cLaws) picked.push(...best(byLaw(id), lawIds.length ? 2 : 3));
@@ -1208,7 +1217,7 @@ function retrieveContext(text) {
   const chosen = []; const seen = new Set(); let used = 0;
   for (const x of picked) {
     if (seen.has(x.e)) continue; seen.add(x.e);
-    const body = x.e.a.body.slice(0, x.pin ? 2600 : 1600), len = body.length + x.e.law.name.length + x.e.a.title.length + 12;
+    const body = x.e.a.body.slice(0, x.pin ? 4200 : 1600), len = body.length + x.e.law.name.length + x.e.a.title.length + 12;
     if (used + len > CTX_BUDGET) continue;    // لا تتوقف عند مادة طويلة: قد تتسع التي بعدها
     used += len; chosen.push({ e: x.e, body });
   }
@@ -1217,7 +1226,9 @@ function retrieveContext(text) {
   // الأجوبة المعتمدة القريبة من السؤال (كتبها ووافق عليها فريق الفعالية)
   const qn = follow ? prevQ.n + ' ' + n : n;
   const hay = qn + ' ' + tl.join(' ');
-  const bank = BANK.map((b) => ({ b, m: b.k.filter((k) => hay.includes(k)).length })).filter((x) => x.m).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);
+  const courtQ = concepts.some((c) => c.id === 'grievance') || lawIds.some((id) => id === 'bog' || id === 'bog-proc');     // سؤال عن التظلم والمحاكم الإدارية: أجوبة نزاهة المعتمدة لا تُرفق إلا إذا طابقته بوضوح
+  const hayB = hay.replace(/تحقيق/g, ' ');     // «التحقيق» ليست «حقّي»
+  const bank = BANK.map((b) => ({ b, m: b.k.filter((k) => hayB.includes(k)).length })).filter((x) => x.m >= (courtQ ? 2 : 1)).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);
   lastCtxInfo = (order.map((id) => `${id}(${chosen.filter((c) => c.e.law.id === id).length})`).join(' ') || '-') + (bank.length ? ' | bank:' + bank.map((b) => b.id).join(',') : '') + (follow ? ' | follow-up' : '');
   return '【قائمة الأنظمة المضافة: هذه كلها، ولا يوجد غيرها】\n' + textLaws().map((l) => l.name).join('؛ ') + '.\n\n'
     + (bank.length ? '【أجوبة معتمدة】\n' + bank.map((b) => `س: ${b.q}\nج: ${b.a}`).join('\n') + '\n\n' : '')
@@ -1238,6 +1249,7 @@ async function ask(text, item = null) {
   const ef = earlyFill; earlyFill = null;
   const early = ef && !item && ef.my === session ? ef.sp : null;      // «أبشر» بدأت قبل قليل (وضع always): الجواب يكمل بعدها
   if (ef && !early) ef.sp.end();
+  if (early) acksThisChat++;
   if (!early && nazihActive()) interrupt();      // سؤال جديد أثناء الجواب: يقطع القديم
   resetIdle();                                   // السؤال بالصوت يُحسب تفاعلاً مثل اللمس
   const my = session, earlySeq = early ? speakSeq : -1;
@@ -1261,12 +1273,7 @@ async function ask(text, item = null) {
     // إذا تأخر الجواب قال نزيه كلمة واحدة («أبشر») فيعرف الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع. انظر CONFIG.ack
     let sp = early, firstSaid = false;
     if (sp) streamed = sp;
-    const mode = ackMode(), lateMs = mode === 'always' ? 1100 : mode === 'auto' && askCount - lastAckAsk >= 2 ? CONFIG.ackLateMs : 0;
-    if (early) lastAckAsk = askCount;
-    const fillT = lateMs > 0 && settings.voice ? setTimeout(() => {
-      if (my !== session || firstSaid || sp) return;
-      stopSpeaking(); sp = makeSpeaker(); streamed = sp; sp.push(nextFiller()); T.mark('filler'); lastAckAsk = askCount;
-    }, lateMs) : null;
+    const fillT = null;
     try {
       const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: ctxFor(text), stream: true }), signal: (askAbort = new AbortController()).signal });
       if (r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
@@ -1313,7 +1320,13 @@ async function ask(text, item = null) {
       reply = hit ? hit.a : 'سؤال جميل! أنا الآن أعمل بالوضع المحدود، فاختر من الأسئلة الجاهزة أمامك، أو جرّب «اختبر نفسك».';
     }
   }
-  if (hit) reply = hit.a;
+  if (hit) {
+    reply = hit.a;
+    if (ACK_LEAD.test(reply)) {                    // جواب معتمد يبدأ بـ«أبشر»: تبقى الكلمة فقط إذا كان خيار الإعدادات يسمح بها الآن، وتُحسب
+      const m = ackMode();
+      if (early || m === 'never' || (m === 'auto' && acksThisChat > 0)) reply = reply.replace(ACK_LEAD, ''); else acksThisChat++;
+    }
+  }
   setBusy(false);
   if (my !== session) return;
   history.push({ role: 'assistant', content: reply }); history = history.slice(-10);
@@ -1322,7 +1335,7 @@ async function ask(text, item = null) {
   if (hit?.sheet) openSheet(hit.sheet);
   setStatus(CONFIG.idleStatus);
   if (streamed && !hit) await streamed.end();
-  else if (early && my === session && speakSeq === earlySeq) { splitForSpeech(reply, speechChunk()).forEach((x) => early.push(x)); await early.end(); }   // جواب جاهز أو نص مادة: يُكمل بعد «أبشر» دون قطعها
+  else if (early && my === session && speakSeq === earlySeq) { splitForSpeech(reply.replace(ACK_LEAD, ''), speechChunk()).forEach((x) => early.push(x)); await early.end(); }   // جواب جاهز أو نص مادة: يُكمل بعد «أبشر» دون قطعها
   else await speak(reply);
   if (my === session && !recState && !busy && !did) setStatus(CONFIG.idleStatus);
 }
@@ -1342,7 +1355,7 @@ async function runAction(name, said = '') {
 
 function newChat() {
   session++; stopSpeaking(); setBusy(false);
-  history = []; prevQ = null; lastLawId = null; askCount = 0; lastAckAsk = -9; showCaption('', CONFIG.greeting); setStatus(CONFIG.idleStatus);
+  history = []; prevQ = null; lastLawId = null; askCount = 0; acksThisChat = 0; showCaption('', CONFIG.greeting); setStatus(CONFIG.idleStatus);
 }
 
 $('#kbBtn').addEventListener('click', () => {      // مع الأفتار الحي: زر لوحة المفاتيح يُظهر خانة الكتابة ويخفيها

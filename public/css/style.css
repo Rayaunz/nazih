@@ -416,3 +416,7 @@ dialog .row select{font:inherit;font-size:.95em;padding:8px 10px;border-radius:1
 /* ---------- v32: شعارات الجدار للشاشات الكبيرة فقط، ولا تظهر فوق بث طولي ---------- */
 #simliBox.tall .wall-logo{display:none}
 @media (max-height:479px){#simliBox .wall-logo{display:none}}
+/* v33: جوال بالعرض والوجه الحي يغطي الاستديو: شعارات الجدار مخفية، فيرجع شعار الجامعة وشعار نزاهة إلى الشريط العلوي بحجم واضح */
+@media (min-aspect-ratio:1/1) and (max-height:479px){
+  body.simli:not(.simli-off) .top .logo{display:block;height:calc(11*var(--u));width:calc(13*var(--u))}
+}
