@@ -22,6 +22,10 @@
   .opt span{flex:1}
   .opt button{margin:0;padding:6px 16px}
   #msg{min-height:26px;color:#b3261e;font-size:15px}
+  .clip h3{margin:0 0 6px;font-size:17px;color:#1B5E20}
+  .clip textarea{min-height:150px;font-size:15px}
+  .clip .st{font-size:14px;min-height:22px;margin:4px 0 0}
+  #msg.ok,.clip .st.ok{color:#1B5E20}.clip .st.bad{color:#b3261e}
 </style>
 </head>
 <body>
@@ -40,16 +44,44 @@
     <textarea id="txt">حياك الله في اليوم العالمي لمكافحة الفساد. إن شاء الله تستفيد، وبسم الله نبدأ.</textarea>
     <button id="say">اسمع (مثل ما ينطقها نزيه)</button>
     <button id="raw" class="ghost">اسمع النص كما هو بدون معالجة</button>
+    <button id="dl" class="ghost">تنزيل الصوت</button>
     <p id="msg"></p>
     <p>إذا سمعت كلمة تُنطق غلط، اكتبها لي مع النطق الصحيح وأضبطها.</p>
   </div>
+
+  <h2>٣. أصوات مقاطع الفيديو</h2>
+  <p>ستة مقاطع جاهزة. اضغط «اسمع» وإذا عجبك اضغط «تنزيل الصوت» ينزل ملف على جهازك. تقدر تعدّل النص قبل التنزيل. اختر فوق «الشاشة الرئيسية» عشان يطلع بصوت يوسف.</p>
+  <div id="clips"></div>
 </div>
 <script>
 (() => {
   const $ = (s) => document.querySelector(s), msg = $('#msg');
   const SAMPLE = 'حياك الله، ما شاء الله عليك، وإن شاء الله تستفيد من الفعالية.';
   const NAMES = ['بدون تغيير (كما كان)', 'الطريقة ١', 'الطريقة ٢ (المعتمدة حالياً إن لم تغيّرها)', 'الطريقة ٣', 'الطريقة ٤', 'الطريقة ٥'];
+  const CLIPS = [
+    ['الافتتاحية', 'يا هلا والله ومرحبا، يا بعد حيي. باليوم الدولي لمكافحة الفساد، نتذكّر دايم إن النزاهة مو بس شعار. النزاهة طبع فينا وأمانة نتحملها، بدراستنا في قاعات جامعة حائل، وبكل مكان. جامعة حائل وهيئة الرقابة ومكافحة الفساد.. معاً لمجتمع نزيه.'],
+    ['هدية ولا رشوة؟', 'تخيّل إنك بكرسي المسؤولية، وجاك واحد يبي يخلّص أموره ومد لك هدية: بس عجّل لي معاملتي يا طويل العمر، وكل شي نظامي! تاخذها؟ لا يا بعد حيي! النظام واضح وصريح: اللي يقبل عطية عشان يؤدي عمله يعتبر مرتشي، حتى لو المعاملة أصلاً نظامية! والعقوبة؟ تصل إلى السجن عشر سنوات وغرامة مليون ريال. الهدية اللي وراها مصلحة.. نعرف اسمها زين: رشوة.'],
+    ['الواسطة: فزعة ولا فساد؟', 'قريبك دق عليك وقال: معاملة ولدي عندكم، قدّمها على الناس.. ما نبي منك إلا الفزعة! تسويها؟ ترى ما أخذت ولا ريال! لكن النظام ما يشوفها فزعة. الموظف اللي يخل بواجبات وظيفته عشان رجاء أو توصية أو واسطة، يعتبر في حكم المرتشي. والعقوبة؟ السجن حتى ثلاث سنوات وغرامة تصل إلى مئة ألف ريال. خلّ كل واحد ياخذ دوره.. هذي الفزعة الصح.'],
+    ['بلّغ، وهويتك محمية', 'شفت فساد وخايف تبلّغ؟ لا تخاف، النظام معك. نظام حماية المبلّغين يلزم الجهات تخفي هويتك وعنوانك إذا طلبت. واللي يتعمد يكشف بياناتك؟ عقوبته السجن حتى سنة وغرامة تصل إلى مئتي ألف ريال. وحتى لو ما ثبتت الإدانة، حمايتك باقية ما دام بلاغك بحسن نية. لا تسكت.. بلّغ على الرقم تسعمئة وثمانين.'],
+    ['اللي يدفع مثل اللي ياخذ', 'الموظف قال لك: المعاملة تاخذ شهر، بس لو فيه حلاوة تخلص اليوم! تدفع وتخلّص شغلك؟ انتبه.. الراشي والوسيط عليهم نفس عقوبة المرتشي بالضبط! اللي يدفع مثل اللي ياخذ. زين وش المخرج؟ النظام يعفي الراشي أو الوسيط إذا بادر وبلّغ السلطات قبل لا تنكشف الجريمة. القاعدة بسيطة: لا تدفع.. بلّغ.'],
+    ['توقيع بسيط؟', 'مديرك قال لك: يا رجال.. توقيع بسيط على محضر الاستلام، والمواد بتوصل بعدين! توقيع بسيط؟ أبد، هذا تزوير وتغيير للحقيقة بسوء نية! وتزوير محرر منسوب لجهة عامة عقوبته السجن من سنة إلى خمس سنوات وغرامة تصل إلى خمسمئة ألف ريال! وحتى اللي يستعمل المحرر وهو يدري إنه مزور.. عليه نفس العقوبة. تذكّر دايم: توقيعك أمانة، لا تفرّط فيه.'],
+  ];
   let audio = null;
+  async function getAudio(body) {
+    const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, screen: $('#who').value === '1' }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'تعذّر توليد الصوت');
+    return r.blob();
+  }
+  async function save(body, name, btn, out) {
+    out.className = 'st'; out.textContent = 'جاري التجهيز…'; btn.disabled = true;
+    try {
+      const url = URL.createObjectURL(await getAudio(body)), a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      out.className = 'st ok'; out.textContent = 'تم التنزيل: ' + name;
+    } catch (e) { out.className = 'st bad'; out.textContent = e.message; }
+    btn.disabled = false;
+  }
   async function play(body, btn) {
     msg.textContent = ''; if (audio) { audio.pause(); audio = null; }
     btn.disabled = true;
@@ -63,6 +95,13 @@
   $('#opts').innerHTML = `<p style="margin-top:0">الجملة: «${SAMPLE}»</p>` + NAMES.map((n, i) => `<div class="opt"><b>${i}</b><span>${n}</span><button data-i="${i}">اسمع</button></div>`).join('');
   $('#opts').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) play({ text: SAMPLE, allah: Number(b.dataset.i) }, b); });
   $('#say').addEventListener('click', (e) => { const t = $('#txt').value.trim(); if (t) play({ text: t }, e.target); });
+  $('#dl').addEventListener('click', (e) => { const t = $('#txt').value.trim(); if (t) save({ text: t }, 'nazih-voice.mp3', e.target, msg); });
+  $('#clips').innerHTML = CLIPS.map((c, i) => `<div class="card clip"><h3>${i + 1}. ${c[0]}</h3><textarea data-t="${i}">${c[1]}</textarea><button data-p="${i}">اسمع</button><button class="ghost" data-d="${i}">تنزيل الصوت</button><p class="st" data-s="${i}"></p></div>`).join('');
+  $('#clips').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const i = b.dataset.p ?? b.dataset.d, t = $(`[data-t="${i}"]`).value.trim(); if (!t) return;
+    if (b.dataset.p != null) play({ text: t }, b); else save({ text: t }, `nazih-video-${Number(i) + 1}.mp3`, b, $(`[data-s="${i}"]`));
+  });
   $('#raw').addEventListener('click', (e) => { const t = $('#txt').value.trim(); if (t) play({ text: t, raw: true }, e.target); });
 })();
 </script>
