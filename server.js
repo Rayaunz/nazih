@@ -299,7 +299,7 @@ function ttsRequest(provider, text, pcm, signal) {       // يرجع { r, rate }
    - لإضافة كلمة يخطئ فيها الصوت: TTS_FIXES في Environment بصيغة «كلمة=نطقها» مفصولة بفاصلة منقوطة، مثل: نزاهة=نَزاهة;حائل=حائِل */
 const ALLAH_FORMS = ['', 'اللهُ', 'اللَّه', 'اللّٰه', 'اللاه', 'ٱللَّه'];
 const ALLAH_PICK = Math.min(5, Math.max(0, parseInt(process.env.TTS_ALLAH ?? '2', 10) || 0));
-const THIN_BEFORE = '(?:بسم|باسم|بإذن|باذن|بعون|بفضل|بحمد|بتوفيق|برحمة|بأمر|بقدرة|بمشيئة|في سبيل|على بركة|في ذمة|لوجه|في أمان|في حفظ|إلى|الى)';
+const THIN_BEFORE = '(?:و?رحمة|بسم|باسم|بإذن|باذن|بعون|بفضل|بحمد|بتوفيق|برحمة|بأمر|بقدرة|بمشيئة|في سبيل|على بركة|في ذمة|لوجه|في أمان|في حفظ|إلى|الى)';
 /* نطق العبارات الدارجة (الحائلية) في الترحيب: الكتابة على الشاشة تبقى عادية، والصوت يستلمها مشكولة حتى لا ينطقها فصحى.
    القائمة قصيرة عمداً وفيها المؤكد فقط؛ الباقي يُضاف عبر TTS_FIXES بعد أن يسمعه صاحب اللهجة من صفحة ‎/say.html‎. */
 const B0 = '(?<![\\u0621-\\u0652\\u0670\\u0671])', B1 = '(?![\\u0621-\\u0652\\u0670\\u0671])';
@@ -522,7 +522,7 @@ const newStats = () => ({ v: 1, since: Date.now(), days: {}, top: {}, devs: {} }
 let STATS = newStats(), statsDirty = false, statsBoot = Date.now();
 try { const j = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')); if (j && j.v === 1 && j.days) STATS = { ...newStats(), ...j }; } catch {}
 const riyadh = () => new Date(Date.now() + 3 * 3600 * 1000);           // توقيت المملكة ثابت (UTC+3)
-const newDay = () => ({ sessions: 0, screen: 0, phone: 0, qr: 0, newDevs: 0, q: 0, src: {}, kind: {}, bank: {}, act: {}, hours: new Array(24).fill(0), rate: [0, 0, 0, 0, 0], quizN: 0, quizSum: 0, quizMax: 0, quizDist: {}, scn: {} });
+const newDay = () => ({ sessions: 0, screen: 0, phone: 0, qr: 0, newDevs: 0, q: 0, src: {}, kind: {}, bank: {}, act: {}, hours: new Array(24).fill(0), rate: [0, 0, 0, 0, 0], quizN: 0, quizSum: 0, quizMax: 0, quizDist: {}, scn: {}, cert: 0, qp: 0 });
 function statDay() { const k = riyadh().toISOString().slice(0, 10); return (STATS.days[k] = STATS.days[k] || newDay()); }
 const inc = (o, k, n = 1) => { o[k] = (o[k] || 0) + n; };
 const normQ = (t) => String(t || '').replace(/[ً-ْـ]/g, '').replace(/[؟?!.,،:؛"«»()\[\]]/g, ' ').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -555,6 +555,8 @@ function recordEvent(e) {
     }
     case 'rate': { const v = Number(e.v); if (v >= 1 && v <= 5 && Number.isInteger(v)) d.rate[v - 1]++; break; }
     case 'quiz': { const sc = Number(e.score), n = Number(e.n); if (Number.isInteger(sc) && Number.isInteger(n) && n > 0 && n <= 50 && sc >= 0 && sc <= n) { d.quizN++; d.quizSum += sc; d.quizMax += n; inc(d.quizDist, `${sc}/${n}`); } break; }
+    case 'cert': d.cert = (d.cert || 0) + 1; break;
+    case 'qp': d.qp = (d.qp || 0) + 1; break;                    // جولة في صفحة «تحدي النزاهة» (‎/quiz‎)
     case 'scn': { if (SAFE_ID.test(e.id || '') && ['best', 'ok', 'bad'].includes(e.v)) { const x = (d.scn[e.id] = d.scn[e.id] || { best: 0, ok: 0, bad: 0 }); x[e.v]++; } break; }
     default: return;
   }
@@ -571,6 +573,12 @@ function saveStats(sync) {
 setInterval(() => saveStats(false), 30000).unref();
 setInterval(() => { const d = statDay(); console.log(`📊 اليوم: ${d.sessions} جلسة، ${d.q} سؤال، ${d.rate.reduce((a, b) => a + b, 0)} تقييم، ${d.quizN} اختبار`); }, 30 * 60000).unref();
 ['SIGTERM', 'SIGINT'].forEach((sig) => process.on(sig, () => { saveStats(true); process.exit(0); }));
+/* أرقام اليوم لشاشات العرض (أعداد عامة فقط، بدون رمز دخول) */
+function handleLive(req, res) {
+  const d = statDay();
+  const perfect = Object.entries(d.quizDist || {}).reduce((a, [k, n]) => { const [sc, m] = k.split('/').map(Number); return a + (sc === m ? n : 0); }, 0);
+  sendJSON(res, 200, { sessions: d.sessions, q: d.q, quizN: d.quizN, quizAvg: d.quizMax ? Math.round((d.quizSum / d.quizMax) * 100) : 0, perfect, rounds: d.qp || 0 });
+}
 async function handleEvent(req, res) {
   let e = null; try { e = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}'); } catch {}
   recordEvent(e);
@@ -605,6 +613,7 @@ http.createServer(async (req, res) => {
       if (!sameSite(req)) return sendJSON(res, 403, { error: 'forbidden' });
       if (rateLimited(ip)) return sendJSON(res, 429, { error: 'طلبات كثيرة، حاول بعد قليل' });
       if (req.url.startsWith('/api/event')) return await handleEvent(req, res);
+      if (req.url.startsWith('/api/live')) return handleLive(req, res);
       if (req.url.startsWith('/api/stats')) return await handleStats(req, res);
       if (req.url.startsWith('/api/chat')) return await handleChat(req, res);
       if (req.url.startsWith('/api/tts-pcm')) return await handleTTSPcm(req, res);
@@ -614,6 +623,9 @@ http.createServer(async (req, res) => {
       return sendJSON(res, 404, { error: 'not found' });
     }
     if (/^\/stats\/?(\?.*)?$/.test(req.url)) req.url = '/stats.html';      // لوحة الإحصائيات: ‎/stats‎
+    // روابط قصيرة: ‎/quiz‎ صفحة التحدي للجوال، ‎/screen2‎ شاشة «جرّب نزيه من جوالك»، ‎/screen3‎ شاشة «تحدي النزاهة»
+    { const m = req.url.match(/^\/(quiz|screen2|screen3)\/?(\?.*)?$/);
+      if (m) req.url = m[1] === 'quiz' ? '/quiz.html' + (m[2] || '') : '/screen.html?show=' + (m[1] === 'screen3' ? 'quiz' : 'site'); }
     serveStatic(req, res);
   } catch (e) {
     const timeout = e?.name === 'TimeoutError' || e?.name === 'AbortError';

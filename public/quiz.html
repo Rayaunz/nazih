@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4eee6">
+<title>تحدي النزاهة | اليوم العالمي لمكافحة الفساد — جامعة حائل</title>
+<link rel="icon" type="image/png" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+  :root{--green:#1B5E20;--green2:#2E7D32;--soft:#e6f1e7;--gold:#C9A84C;--goldd:#9a7b2a;--ink:#17261c;--muted:#5d6b61;--red:#c0392b;--line:#e3ddd2}
+  *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{background:linear-gradient(#f7f2ea,#efe6da);color:var(--ink);font-family:"IBM Plex Sans Arabic",system-ui,"Segoe UI",Tahoma,sans-serif;font-size:18px;line-height:1.8}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .wrap{max-width:620px;min-height:100%;margin:0 auto;padding:14px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.85);border-radius:99px;padding:8px 16px;box-shadow:0 4px 18px rgba(0,0,0,.07)}
+  header img{height:42px;width:48px;object-fit:contain;mix-blend-mode:multiply}
+  header div{flex:1;text-align:center;line-height:1.4}
+  header b{display:block;color:var(--green);font-size:18px}
+  header span{font-size:13px;color:var(--goldd)}
+  main{flex:1;display:flex;flex-direction:column;justify-content:center;padding:18px 0}
+  .card{background:#fff;border-radius:22px;padding:22px 20px;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+  h1{font-size:30px;color:var(--green);text-align:center;line-height:1.4}
+  .lead{text-align:center;color:var(--muted);margin:6px 0 16px}
+  .rules{list-style:none;padding:0;margin:0 0 18px}
+  .rules li{padding:8px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
+  .rules li:last-child{border-bottom:0}
+  .rules b{color:var(--goldd);min-width:1.4em;text-align:center}
+  .btn{display:block;width:100%;padding:15px;border-radius:99px;background:var(--green);color:#fff;font-weight:700;font-size:19px;margin-top:12px}
+  .btn.gold{background:linear-gradient(135deg,#d9bb62,var(--gold));color:#2b2206}
+  .btn.ghost{background:#fff;color:var(--green);border:1.5px solid var(--green)}
+  .bar{height:8px;border-radius:99px;background:var(--soft);overflow:hidden;margin-bottom:10px}
+  .bar div{height:100%;background:var(--green2);border-radius:99px;transition:width .3s}
+  .meta{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-bottom:8px}
+  .kind{display:inline-block;font-size:13px;font-weight:700;color:var(--goldd);border:1px solid var(--gold);border-radius:99px;padding:0 12px;margin-bottom:8px}
+  .q{font-size:21px;font-weight:700;line-height:1.7;margin-bottom:14px}
+  .opt{display:block;width:100%;text-align:start;padding:13px 16px;margin-bottom:10px;border-radius:16px;border:1.5px solid var(--line);background:#fff;font-size:18px;line-height:1.7;transition:transform .08s}
+  .opt:active{transform:scale(.985)}
+  .opt:disabled{cursor:default}
+  .opt.correct{border-color:var(--green2);background:#e3f3e5}
+  .opt.wrong{border-color:var(--red);background:#fbe9e7}
+  .opt.partial{border-color:var(--gold);background:#fbf3d9}
+  .exp{border-inline-start:6px solid var(--gold);background:#fbf6e6;padding:12px 16px;border-radius:14px;margin-top:6px;font-size:16.5px}
+  .exp.ok{border-inline-start-color:var(--green2);background:#e9f5ea}
+  .exp.no{border-inline-start-color:var(--red);background:#fbeceb}
+  .exp b{display:block}
+  .score{font-size:76px;font-weight:700;color:var(--green);text-align:center;direction:ltr;line-height:1.2}
+  .rank{text-align:center;font-size:24px;font-weight:700;color:var(--goldd)}
+  .msg{text-align:center;color:var(--muted);margin:4px 0 10px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  footer{text-align:center;color:var(--muted);font-size:13px;padding-top:6px}
+  .pop{animation:pop .25s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="assets/uoh-logo.png" alt="جامعة حائل">
+    <div><b>تحدي النزاهة</b><span>اليوم العالمي لمكافحة الفساد · 9 ديسمبر</span></div>
+    <img src="assets/nazaha-logo.jpg" alt="نزاهة">
+  </header>
+  <main id="main"></main>
+  <footer>الأسئلة من نصوص الأنظمة السعودية · لا تُحفظ أسماء ولا بيانات شخصية</footer>
+</div>
+
+<script src="js/quiz-data.js"></script>
+<script src="js/quiz-extra.js"></script>
+<script src="js/scenario-data.js"></script>
+<script>
+(() => {
+  const ROUND = { quiz: 5, scenario: 2 };            // عدد الأسئلة والمواقف في كل جولة (تتغير كل مرة)
+  const $ = (s) => document.querySelector(s), main = $('#main');
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const shuffle = (a) => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const params = new URLSearchParams(location.search), FROM_QR = params.get('from') === 'qr';
+  const DEV = (() => { try { let d = localStorage.getItem('nazih.dev'); if (!d) { d = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem('nazih.dev', d); } return d; } catch { return ''; } })();
+  const send = (o) => { try { const b = new Blob([JSON.stringify(o)], { type: 'text/plain' }); if (!navigator.sendBeacon?.('/api/event', b)) fetch('/api/event', { method: 'POST', body: b, keepalive: true }).catch(() => {}); } catch {} };
+  const buzz = (p) => { try { navigator.vibrate?.(p); } catch {} };
+  /* لا تتكرر الأسئلة على نفس الزائر إلا بعد أن يمرّ على البنك كله */
+  const seen = { quiz: [], scenario: [] };
+  function pick(kind, pool, n) {
+    let fresh = pool.map((_, i) => i).filter((i) => !seen[kind].includes(i));
+    if (fresh.length < n) { seen[kind] = []; fresh = pool.map((_, i) => i); }
+    const got = shuffle(fresh).slice(0, n); seen[kind].push(...got); return got.map((i) => pool[i]);
+  }
+  let game = null, opened = false;
+
+  function home() {
+    main.innerHTML = `<div class="card pop">
+      <h1>كم تعرف عن النزاهة؟</h1>
+      <p class="lead">تحدٍّ سريع من دقيقتين: ${ROUND.quiz} أسئلة و${ROUND.scenario === 2 ? 'موقفان' : ROUND.scenario + ' مواقف'} من الواقع</p>
+      <ul class="rules">
+        <li><b>١</b><span>اختر الجواب، وتشوف الصح مع نص النظام مباشرة.</span></li>
+        <li><b>٢</b><span>في المواقف: اختر وش تسوي لو كنت مكانه.</span></li>
+        <li><b>٣</b><span>كل جولة أسئلتها غير. جرّب أكثر من مرة وارفع نتيجتك.</span></li>
+      </ul>
+      <button class="btn gold" id="go">ابدأ التحدي</button>
+      <a class="btn ghost" href="/" style="text-align:center;text-decoration:none">أو اسأل «نزيه» بصوتك</a>
+    </div>`;
+    $('#go').onclick = start;
+  }
+  function start() {
+    const qs = pick('quiz', window.QUIZ || [], ROUND.quiz).map((x) => ({ kind: 'q', x }));
+    const ss = pick('scenario', window.SCENARIOS || [], ROUND.scenario).map((x) => ({ kind: 's', x }));
+    const items = [...qs]; ss.forEach((s, i) => items.splice(2 + i * 3, 0, s));            // المواقف موزعة بين الأسئلة
+    game = { items, i: 0, score: 0 };
+    if (!opened) { opened = true; send({ t: 'session', dev: DEV, screen: false, qr: FROM_QR }); }
+    send({ t: 'qp' });
+    show();
+  }
+  function show() {
+    const n = game.items.length;
+    if (game.i >= n) return end();
+    const it = game.items[game.i], isQ = it.kind === 'q', x = it.x;
+    const order = shuffle((isQ ? x.o : x.o).map((_, i) => i));
+    main.innerHTML = `<div class="card pop">
+      <div class="bar"><div style="width:${(game.i / n) * 100}%"></div></div>
+      <div class="meta"><span>${game.i + 1} من ${n}</span><span>نتيجتك: ${game.score}</span></div>
+      <span class="kind">${isQ ? 'سؤال' : 'موقف: وش تسوي لو؟'}</span>
+      <div class="q">${esc(isQ ? x.q : x.s)}</div>
+      ${order.map((i) => `<button class="opt" data-i="${i}">${esc(isQ ? x.o[i] : x.o[i].t)}</button>`).join('')}
+      <div id="after"></div>
+    </div>`;
+    scrollTo(0, 0);
+    document.querySelectorAll('.opt').forEach((b) => b.onclick = () => {
+      const i = Number(b.dataset.i); let ok, cls, head, text;
+      document.querySelectorAll('.opt').forEach((o) => { o.disabled = true; });
+      if (isQ) {
+        ok = i === x.a; cls = ok ? 'ok' : 'no'; head = ok ? 'إجابة صحيحة!' : 'الإجابة الصحيحة بالأخضر'; text = x.e;
+        document.querySelectorAll('.opt').forEach((o) => { if (Number(o.dataset.i) === x.a) o.classList.add('correct'); });
+        if (!ok) b.classList.add('wrong');
+      } else {
+        const o = x.o[i]; ok = o.v === 'best'; cls = ok ? 'ok' : o.v === 'ok' ? '' : 'no';
+        head = ok ? 'التصرف الأمثل' : o.v === 'ok' ? 'مقبول، وفيه أكمل منه' : 'تصرف خاطئ'; text = o.c;
+        document.querySelectorAll('.opt').forEach((el) => { if (x.o[Number(el.dataset.i)].v === 'best') el.classList.add('correct'); });
+        if (o.v === 'bad') b.classList.add('wrong'); else if (o.v === 'ok') b.classList.add('partial');
+        send({ t: 'scn', id: x.id, v: o.v });
+      }
+      if (ok) game.score++;
+      buzz(ok ? 12 : [20, 40, 20]);
+      $('#after').innerHTML = `<div class="exp ${cls} pop"><b>${head}</b>${esc(text)}</div><button class="btn" id="next">${game.i + 1 < n ? 'التالي' : 'النتيجة'}</button>`;
+      $('#next').onclick = () => { game.i++; show(); };
+      $('#next').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+  function end() {
+    const n = game.items.length, pct = game.score / n;
+    const rank = pct === 1 ? 'سفير النزاهة' : pct >= 0.7 ? 'نزيه ومطّلع' : pct >= 0.45 ? 'على الطريق الصحيح' : 'تحتاج جولة ثانية';
+    const msg = pct === 1 ? 'ما شاء الله، علامة كاملة!' : pct >= 0.7 ? 'نتيجة ممتازة، وباقي لك شوي على العلامة الكاملة.' : pct >= 0.45 ? 'معلوماتك طيبة، وجولة ثانية ترفعها.' : 'لا بأس، كل جولة تعلّمك شي جديد.';
+    send({ t: 'quiz', score: game.score, n });
+    let best = 0; try { best = Math.max(Number(localStorage.getItem('nazih.qpBest') || 0), Math.round(pct * 100)); localStorage.setItem('nazih.qpBest', best); } catch {}
+    main.innerHTML = `<div class="card pop">
+      <div class="score">${game.score} / ${n}</div>
+      <div class="rank">${rank}</div>
+      <p class="msg">${msg}${best ? `<br>أفضل نتيجة لك: ${best}%` : ''}</p>
+      <button class="btn gold" id="again">جولة جديدة بأسئلة غير</button>
+      <div class="row"><button class="btn ghost" id="share">شارك نتيجتك</button><a class="btn ghost" href="/" style="text-align:center;text-decoration:none">اسأل نزيه</a></div>
+    </div>`;
+    scrollTo(0, 0);
+    $('#again').onclick = start;
+    $('#share').onclick = async (e) => {
+      const text = `حصلت على ${game.score} من ${n} في تحدي النزاهة — اليوم العالمي لمكافحة الفساد، جامعة حائل. جرّب: ${location.origin}/quiz`;
+      try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); e.target.textContent = 'تم النسخ'; } } catch {}
+    };
+  }
+  if (FROM_QR) send({ t: 'open', qr: true });
+  home();
+})();
+</script>
+</body>
+</html>

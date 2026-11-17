@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>شاشة العرض | نزيه</title>
+<link rel="icon" type="image/png" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* شاشة عرض (لا تُلمس): رمز QR كبير + محتوى يتبدل. الوحدة u تتبع حجم الشاشة فتصلح للطولية والعرضية */
+  :root{--u:min(.52vw,.92vh);--green:#1B5E20;--green2:#2E7D32;--gold:#C9A84C;--goldd:#9a7b2a;--ink:#17261c;--muted:#5d6b61}
+  @media (max-aspect-ratio:1/1){:root{--u:min(.92vw,.52vh)}}
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%;overflow:hidden}
+  body{background:radial-gradient(ellipse at 30% 20%,#fbf7ef,#ece2d2);color:var(--ink);font-family:"IBM Plex Sans Arabic",system-ui,"Segoe UI",Tahoma,sans-serif;cursor:none}
+  .page{height:100%;display:grid;grid-template-rows:auto 1fr auto;padding:calc(3*var(--u)) calc(5*var(--u))}
+  header{display:flex;align-items:center;justify-content:space-between;gap:calc(3*var(--u))}
+  header img{height:calc(11*var(--u));max-width:calc(18*var(--u));object-fit:contain;mix-blend-mode:multiply}
+  header div{text-align:center}
+  header b{display:block;font-size:calc(5*var(--u));color:var(--green);line-height:1.4}
+  header span{font-size:calc(2.8*var(--u));color:var(--goldd);font-weight:600}
+  main{display:grid;grid-template-columns:1fr auto;align-items:center;gap:calc(6*var(--u));min-height:0}
+  @media (max-aspect-ratio:1/1){main{grid-template-columns:1fr;grid-template-rows:auto auto;justify-items:center;text-align:center;gap:calc(4*var(--u))}}
+  .text h1{font-size:calc(8.4*var(--u));color:var(--green);line-height:1.35}
+  .text .sub{font-size:calc(4*var(--u));font-weight:600;margin-top:calc(1*var(--u));line-height:1.6}
+  .steps{display:flex;flex-wrap:wrap;gap:calc(1.6*var(--u));margin-top:calc(3*var(--u))}
+  @media (max-aspect-ratio:1/1){.steps{justify-content:center}}
+  .steps span{background:#fff;border-radius:99px;padding:calc(1*var(--u)) calc(3*var(--u));font-size:calc(2.8*var(--u));font-weight:600;box-shadow:0 calc(.6*var(--u)) calc(2*var(--u)) rgba(0,0,0,.07)}
+  .steps b{color:var(--goldd);margin-inline-end:calc(1*var(--u))}
+  .qr{background:#fff;border-radius:calc(4*var(--u));padding:calc(3*var(--u));box-shadow:0 calc(1.5*var(--u)) calc(6*var(--u)) rgba(0,0,0,.14);text-align:center;animation:float 4s ease-in-out infinite}
+  .qr .code{width:calc(40*var(--u));line-height:0}
+  .qr .code svg{display:block;width:100%;height:auto}
+  .qr p{font-size:calc(3.2*var(--u));font-weight:700;color:var(--green);margin-top:calc(1.6*var(--u))}
+  .qr small{display:block;font-size:calc(2.2*var(--u));color:var(--muted);direction:ltr;margin-top:calc(.4*var(--u))}
+  @keyframes float{50%{transform:translateY(calc(-1.2*var(--u)))}}
+  /* البطاقة المتبدلة */
+  .live{margin-top:calc(3.4*var(--u));background:rgba(255,255,255,.9);border-radius:calc(3*var(--u));padding:calc(2.4*var(--u)) calc(3.4*var(--u));min-height:calc(27*var(--u));text-align:start}
+  .live .tag{display:inline-block;font-size:calc(2.2*var(--u));font-weight:700;color:var(--goldd);border:1.5px solid var(--gold);border-radius:99px;padding:0 calc(2*var(--u));margin-bottom:calc(1*var(--u))}
+  .live .q{font-size:calc(3.7*var(--u));font-weight:700;line-height:1.6}
+  .live .opts{display:grid;grid-template-columns:1fr 1fr;gap:calc(1.2*var(--u));margin-top:calc(1.6*var(--u))}
+  .live .opts div{border:1.5px solid #e3ddd2;border-radius:calc(1.8*var(--u));padding:calc(.8*var(--u)) calc(2*var(--u));font-size:calc(2.7*var(--u));line-height:1.6;background:#fff;transition:all .4s}
+  .live .opts div.ok{border-color:var(--green2);background:#e3f3e5;font-weight:700}
+  .live .opts div.dim{opacity:.4}
+  .live .ask{font-size:calc(4.4*var(--u));font-weight:700;color:var(--green);line-height:1.7}
+  .timer{height:calc(.9*var(--u));border-radius:99px;background:#e6f1e7;overflow:hidden;margin-top:calc(1.8*var(--u))}
+  .timer i{display:block;height:100%;background:var(--gold);border-radius:99px;width:100%}
+  .fade{animation:fade .5s ease-out}
+  @keyframes fade{from{opacity:0;transform:translateY(calc(1.5*var(--u)))}to{opacity:1;transform:none}}
+  footer{display:flex;justify-content:center;gap:calc(3*var(--u));flex-wrap:wrap}
+  .stat{background:var(--green);color:#fff;border-radius:calc(2.4*var(--u));padding:calc(1.2*var(--u)) calc(4*var(--u));text-align:center;min-width:calc(26*var(--u))}
+  .stat b{display:block;font-size:calc(5.4*var(--u));line-height:1.25;font-variant-numeric:tabular-nums}
+  .stat span{font-size:calc(2.3*var(--u));opacity:.9}
+  .stat.gold{background:linear-gradient(135deg,#d9bb62,var(--gold));color:#2b2206}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <img src="assets/uoh-logo.png" alt="جامعة حائل">
+    <div><b>اليوم العالمي لمكافحة الفساد</b><span>معاً .. لمجتمع نزيه وشفاف</span></div>
+    <img src="assets/nazaha-logo.jpg" alt="نزاهة">
+  </header>
+  <main>
+    <div class="text">
+      <h1 id="h1"></h1>
+      <p class="sub" id="sub"></p>
+      <div class="steps" id="steps"></div>
+      <div class="live" id="live"></div>
+    </div>
+    <div class="qr"><div class="code" id="code"></div><p id="qrp"></p><small id="qrs"></small></div>
+  </main>
+  <footer id="foot"></footer>
+</div>
+
+<script src="js/qr.js"></script>
+<script src="js/quiz-data.js"></script>
+<script src="js/quiz-extra.js"></script>
+<script>
+(() => {
+  /* ‎?show=site‎  : شاشة «جرّب نزيه من جوالك»      ‎?show=quiz‎ : شاشة «تحدي النزاهة» */
+  const $ = (s) => document.querySelector(s), esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const QUIZ = new URLSearchParams(location.search).get('show') === 'quiz' || /screen3/.test(location.pathname);
+  const shuffle = (a) => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+  const url = location.origin + (QUIZ ? '/quiz?from=qr' : '/?from=qr');
+  $('#code').innerHTML = window.NazihQR.svg(url, { quiet: 2 });
+  $('#qrs').textContent = location.host + (QUIZ ? '/quiz' : '');
+  if (QUIZ) {
+    document.title = 'تحدي النزاهة | شاشة العرض';
+    $('#h1').textContent = 'تحدي النزاهة'; $('#sub').textContent = 'صوّر الرمز بجوالك واختبر نفسك في دقيقتين';
+    $('#qrp').textContent = 'صوّر وابدأ التحدي';
+    $('#steps').innerHTML = '<span><b>١</b>صوّر الرمز</span><span><b>٢</b>جاوب على الأسئلة والمواقف</span><span><b>٣</b>كل جولة أسئلتها غير</span>';
+  } else {
+    document.title = 'جرّب نزيه | شاشة العرض';
+    $('#h1').textContent = 'جرّب «نزيه» من جوالك'; $('#sub').textContent = 'مساعدك الافتراضي للنزاهة ومكافحة الفساد: اسأله بصوتك ويجاوبك';
+    $('#qrp').textContent = 'صوّر واسأل نزيه';
+    $('#steps').innerHTML = '<span><b>١</b>صوّر الرمز</span><span><b>٢</b>اضغط المايك واسأل</span><span><b>٣</b>نزيه يجاوبك من نص النظام</span>';
+  }
+
+  /* المحتوى المتبدل */
+  const live = $('#live');
+  const ASKS = ['كيف أبلّغ عن حالة فساد؟', 'هل هويتي محمية إذا بلّغت؟', 'ما الفرق بين الهدية والرشوة؟', 'هل الواسطة تعتبر فساد؟', 'ما عقوبة الرشوة؟', 'اقرأ لي المادة الأولى من نظام مكافحة الرشوة', 'ما دوري كطالب في تعزيز النزاهة؟', 'ما عقوبة تزوير محرر رسمي؟'];
+  let pool = [], ai = 0;
+  function nextQuiz() {
+    if (!pool.length) pool = shuffle(window.QUIZ || []);
+    const x = pool.pop(); if (!x) return;
+    live.innerHTML = `<div class="fade"><span class="tag">سؤال من التحدي · تعرف الجواب؟</span><div class="q">${esc(x.q)}</div>
+      <div class="opts">${x.o.map((o, i) => `<div data-i="${i}">${esc(o)}</div>`).join('')}</div><div class="timer"><i id="tm"></i></div></div>`;
+    const tm = $('#tm'); tm.style.transition = 'none'; tm.style.width = '100%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { tm.style.transition = 'width 11s linear'; tm.style.width = '0%'; }));
+    setTimeout(() => { live.querySelectorAll('.opts div').forEach((d) => d.classList.add(Number(d.dataset.i) === x.a ? 'ok' : 'dim')); }, 11000);
+    setTimeout(nextQuiz, 17000);
+  }
+  function nextAsk() {
+    live.innerHTML = `<div class="fade"><span class="tag">جرّب تسأله</span><div class="ask">«${esc(ASKS[ai++ % ASKS.length])}»</div></div>`;
+    setTimeout(nextAsk, 6000);
+  }
+  if (QUIZ) nextQuiz(); else nextAsk();
+
+  /* أرقام اليوم (أعداد فقط) */
+  async function stats() {
+    try {
+      const r = await fetch('/api/live', { method: 'POST', body: '{}' }), d = await r.json(); if (!r.ok) return;
+      $('#foot').innerHTML = QUIZ
+        ? `<div class="stat"><b>${fmt(d.rounds)}</b><span>جولة لُعبت اليوم</span></div><div class="stat gold"><b>${d.quizN ? d.quizAvg + '%' : '—'}</b><span>متوسط النتائج</span></div><div class="stat"><b>${fmt(d.perfect)}</b><span>علامة كاملة</span></div>`
+        : `<div class="stat"><b>${fmt(d.sessions)}</b><span>زائر سأل نزيه اليوم</span></div><div class="stat gold"><b>${fmt(d.q)}</b><span>سؤال أجاب عنه نزيه</span></div>`;
+    } catch {}
+  }
+  stats(); setInterval(stats, 20000);
+  setTimeout(() => location.reload(), 6 * 3600 * 1000);          // تحديث كل ست ساعات احتياطاً
+})();
+</script>
+</body>
+</html>

@@ -103,6 +103,7 @@
     <button class="btn" id="bOut">خروج</button>
     <input type="file" id="file" accept="application/json,.json" hidden>
   </div>
+  <div id="lost"></div>
   <div id="warn"></div>
   <div class="tiles" id="tiles"></div>
 
@@ -159,12 +160,30 @@
   async function loadBank() {       // عناوين الأسئلة الجاهزة من ملف الموقع
     try { const t = await (await fetch('js/app.js')).text(); for (const m of t.matchAll(/\{ id: '([\w-]+)', icon: '[^']*', q: '([^']+)'/g)) bankQ[m[1]] = m[2]; } catch {}
   }
+  /* نسخة احتياطية تلقائية في هذا المتصفح كل خمس دقائق: إذا أُعيد تشغيل الخادم ونقصت الأرقام يظهر زر استرجاعها */
+  const BK = 'nazih.statsBackup';
+  const weight = (days) => Object.values(days || {}).reduce((a, d) => a + (d.sessions || 0) + (d.q || 0) + (d.rate || []).reduce((x, y) => x + y, 0) + (d.quizN || 0), 0);
+  let lastBackup = 0;
+  async function autoBackup() {
+    let saved = null; try { saved = JSON.parse(localStorage.getItem(BK) || 'null'); } catch {}
+    const now = weight(data.days), had = saved ? weight(saved.days) : 0, box = $('#lost');
+    if (saved && had > now) {
+      box.innerHTML = `<div class="note"><b>الأرقام في الخادم نقصت</b> (غالباً أُعيد تشغيله). في هذا المتصفح نسخة محفوظة تلقائياً بتاريخ ${new Date(saved.at).toLocaleString('ar-SA-u-nu-latn-ca-gregory', { dateStyle: 'medium', timeStyle: 'short' })} فيها أرقام أكثر. <button class="btn primary" id="bRestore" style="margin-inline-start:8px">استرجاع النسخة المحفوظة</button></div>`;
+      $('#bRestore').onclick = async () => { if (!confirm('تُستبدل أرقام الخادم الحالية بأرقام النسخة المحفوظة. متأكد؟')) return; try { await api('/api/stats-import', JSON.stringify(saved)); box.innerHTML = ''; await refresh(); } catch (e) { alert(e.message); } };
+      return;                                        // لا نكتب فوق النسخة الأكبر
+    }
+    box.innerHTML = '';
+    if (Date.now() - lastBackup < 5 * 60000 || !now) return;
+    lastBackup = Date.now();
+    try { const j = await api('/api/stats?full=1'); localStorage.setItem(BK, JSON.stringify({ v: 1, at: Date.now(), since: j.since, days: j.days, top: j.top, devs: j.devs })); } catch {}
+  }
   function showLogin(msg) { $('#dash').hidden = true; $('#login').hidden = false; $('#loginErr').textContent = msg || ''; clearInterval(timer); $('#key').focus(); }
   async function refresh(first) {
     try { data = await api('/api/stats'); }
     catch (e) { if (e.status === 401 || e.status === 503 || first) { if (e.status === 401) { try { localStorage.removeItem(KEY); } catch {} } return showLogin(key || e.status === 503 ? e.message : ''); } return; }
     try { localStorage.setItem(KEY, key); } catch {}
     $('#login').hidden = true; $('#dash').hidden = false;
+    autoBackup();
     const sel = $('#day'), cur = sel.value || 'all', days = Object.keys(data.days).sort();
     sel.innerHTML = `<option value="all">كل الأيام</option>` + days.map((d) => `<option value="${d}">${d}${d === data.today ? ' (اليوم)' : ''}</option>`).join('');
     sel.value = [...sel.options].some((o) => o.value === cur) ? cur : 'all';
@@ -173,11 +192,11 @@
 
   /* جمع الأيام المختارة في ملخص واحد */
   function agg(dayKeys) {
-    const A = { sessions: 0, screen: 0, phone: 0, qr: 0, newDevs: 0, q: 0, src: {}, kind: {}, bank: {}, act: {}, hours: new Array(24).fill(0), rate: [0, 0, 0, 0, 0], quizN: 0, quizSum: 0, quizMax: 0, quizDist: {}, scn: {} };
+    const A = { cert: 0, qp: 0, sessions: 0, screen: 0, phone: 0, qr: 0, newDevs: 0, q: 0, src: {}, kind: {}, bank: {}, act: {}, hours: new Array(24).fill(0), rate: [0, 0, 0, 0, 0], quizN: 0, quizSum: 0, quizMax: 0, quizDist: {}, scn: {} };
     const addMap = (to, from) => { for (const k in from || {}) to[k] = (to[k] || 0) + from[k]; };
     for (const k of dayKeys) {
       const d = data.days[k]; if (!d) continue;
-      ['sessions', 'screen', 'phone', 'qr', 'newDevs', 'q', 'quizN', 'quizSum', 'quizMax'].forEach((f) => { A[f] += d[f] || 0; });
+      ['cert', 'qp', 'sessions', 'screen', 'phone', 'qr', 'newDevs', 'q', 'quizN', 'quizSum', 'quizMax'].forEach((f) => { A[f] += d[f] || 0; });
       ['src', 'kind', 'bank', 'act', 'quizDist'].forEach((f) => addMap(A[f], d[f]));
       (d.hours || []).forEach((v, i) => { A.hours[i] += v || 0; }); (d.rate || []).forEach((v, i) => { A.rate[i] += v || 0; });
       for (const id in d.scn || {}) { const x = (A.scn[id] = A.scn[id] || { best: 0, ok: 0, bad: 0 }); ['best', 'ok', 'bad'].forEach((v) => { x[v] += d.scn[id][v] || 0; }); }
@@ -194,7 +213,7 @@
     const sel = $('#day').value, all = sel === 'all', keys = all ? Object.keys(data.days) : [sel], A = agg(keys);
     const d2 = (t) => new Date(t).toLocaleString('ar-SA-u-nu-latn-ca-gregory', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Riyadh' });
     $('#meta').textContent = `آخر تحديث: ${d2(data.now)} — العدّ بدأ: ${d2(data.since)} — يتحدّث تلقائياً كل نصف دقيقة`;
-    $('#warn').innerHTML = data.persistent ? '' : `<div class="note"><b>تنبيه:</b> الأرقام محفوظة مؤقتاً في الخادم، وتُمسح إذا أُعيد تشغيله أو رُفعت نسخة جديدة من الموقع (آخر تشغيل: ${d2(data.boot)}). اضغط «تنزيل نسخة» قبل أي تحديث للموقع وفي نهاية يوم الفعالية، ثم «استرجاع نسخة» لو انمسحت.</div>`;
+    $('#warn').innerHTML = data.persistent ? '' : `<div class="note"><b>تنبيه:</b> الأرقام محفوظة مؤقتاً في الخادم، وتُمسح إذا أُعيد تشغيله أو رُفعت نسخة جديدة من الموقع (آخر تشغيل: ${d2(data.boot)}). ما دامت هذه الصفحة مفتوحة تُحفظ نسخة تلقائية في هذا المتصفح كل خمس دقائق ويظهر زر استرجاعها إن نقصت الأرقام. واضغط «تنزيل نسخة» قبل أي تحديث للموقع وفي نهاية يوم الفعالية.</div>`;
     const rN = A.rate.reduce((a, b) => a + b, 0), rAvg = rN ? A.rate.reduce((a, b, i) => a + b * (i + 1), 0) / rN : 0;
     const sN = Object.values(A.scn).reduce((a, x) => a + x.best + x.ok + x.bad, 0), sBest = Object.values(A.scn).reduce((a, x) => a + x.best, 0);
     const tile = (l, n, det) => `<div class="tile"><div class="lbl">${l}</div><div class="num">${n}</div><div class="det">${det || '&nbsp;'}</div></div>`;
@@ -204,6 +223,7 @@
       tile('متوسط التقييم', rN ? `${rAvg.toFixed(1)} <small>من 5</small>` : '—', `${fmt(rN)} تقييم`) +
       tile('متوسط نتيجة الاختبار', A.quizMax ? `${Math.round((A.quizSum / A.quizMax) * 100)}<small>%</small>` : '—', `${fmt(A.quizN)} اختبار مكتمل`) +
       tile('المواقف', fmt(sN), sN ? `${Math.round((sBest / sN) * 100)}% اختاروا التصرف الأمثل` : 'إجابة على المواقف') +
+      tile('جولات تحدي النزاهة', fmt(A.qp), 'من صفحة التحدي على الجوال') +
       tile('فتح عبر رمز QR', fmt(A.qr), all ? `${fmt(data.devices)} جهاز مختلف إجمالاً` : `${fmt(A.newDevs)} جهاز جديد`);
 
     /* النشاط بالساعة */

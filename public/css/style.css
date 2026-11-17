@@ -371,3 +371,22 @@ body.did-on.ptt #scn{padding-bottom:calc(24*var(--u))}
   #simliBox .wl-nazaha{left:21.5%;top:14%;width:12.5%}
   #simliBox .wl-uoh{right:22%;top:12%;width:10%}
 }
+
+/* ---------- v23: الشهادة وتنبيه الذكاء الاصطناعي ---------- */
+.btn.gold{background:linear-gradient(135deg,#d9bb62,var(--gold));color:#2b2206}
+#certForm,#certOut{width:100%}
+#certName{text-align:center;margin-top:calc(1.6*var(--u))}
+#certImg{display:block;width:100%;height:auto;border-radius:calc(1.6*var(--u));box-shadow:var(--shadow)}
+.ai-note{display:none;text-align:center;color:var(--muted);font-size:calc(2*var(--u)*var(--fs));margin-top:calc(.8*var(--u))}
+#caption.asked .ai-note{display:block}
+body.did-on.ptt #sheet-cert .sheet-body{padding-bottom:calc(24*var(--u));justify-content:flex-start}
+
+/* ---------- v23: كلمة الافتتاح في الإعدادات ---------- */
+.speech-box{margin:12px 0;border:1px solid var(--line);border-radius:14px;padding:10px 14px;text-align:start}
+.speech-box summary{font-weight:700;color:var(--green);cursor:pointer}
+.speech-box textarea{width:100%;margin-top:10px;font:inherit;font-size:16px;line-height:1.8;border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
+.speech-box .hint{font-size:14px;color:var(--muted);margin:6px 0}
+.speech-box .btns{margin-top:6px}
+.speech-box .btns .primary{margin:0}
+dialog .speech-box .btns .primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:700}
+dialog{max-height:94dvh;overflow-y:auto}

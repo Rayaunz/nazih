@@ -14,6 +14,11 @@ const CONFIG = {
   autoMinSpeechMs: 450,        // أقصر كلام يُقبل (يتجاهل الطقطقة والأصوات القصيرة)
   showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
+  cert: false,                 // شهادة «سفير النزاهة» (مؤجلة: اجعلها true لتفعيلها)
+  certMin: 0.75,               // أقل نسبة للحصول على شهادة «سفير النزاهة» (0.75 = ثلاثة أرباع الإجابات)
+  certTitle: 'شهادة سفير النزاهة',
+  certLine: 'لاجتياز تحدي النزاهة مع المساعد الافتراضي «نزيه»',
+  certEvent: 'اليوم العالمي لمكافحة الفساد — جامعة حائل بالتعاون مع هيئة الرقابة ومكافحة الفساد (نزاهة)',
   scenarioLength: 4,           // عدد مواقف «وش تسوي لو؟» في كل جولة
   attract: true,               // شاشة الترحيب على الشاشة الرئيسية وقت الخمول (الجوالات لا تتأثر)
   attractEverySeconds: 75,     // نزيه يرحّب بالمارّين كل هذه المدة ما دامت الشاشة فاضية
@@ -24,6 +29,12 @@ const CONFIG = {
     'حيّاك الله. تبي تختبر معلوماتك في النزاهة؟ قل اختبرني.',
     'يا هلا ومرحبا. إذا الشاشة مشغولة، صوّر الرمز وكمّل معي على جوالك.',
   ],
+  openingSpeech:               // كلمة الافتتاح الافتراضية (تُعدَّل من الإعدادات على الشاشة الرئيسية وتُحفظ في ذلك الجهاز)
+    'بسم الله الرحمن الرحيم. السلام عليكم ورحمة الله وبركاته. يا هلا والله ومرحبا براعي الحفل، وبأصحاب السعادة، وبالحضور الكريم. '
+    + 'أنا نزيه، المساعد الافتراضي لجامعة حائل في اليوم العالمي لمكافحة الفساد، الذي تنظمه الجامعة بالتعاون مع هيئة الرقابة ومكافحة الفساد. '
+    + 'النزاهة أمانة نحملها جميعاً، ومكافحة الفساد مسؤولية كل واحد منا، في دراسته وفي عمله. '
+    + 'واليوم أنا بينكم، أجاوب على أسئلتكم عن الأنظمة وطرق البلاغ وحماية المبلّغين، وأختبر معلوماتكم، وأعرض عليكم مواقف من الواقع. '
+    + 'حيّاكم الله، وتفضلوا اسألوني. معاً لمجتمع نزيه وشفاف.',
   stats: true,                 // إرسال أعداد مجهولة (زيارات، أسئلة، تقييم، اختبار) للوحة الإحصائيات
   idleStatus: 'اضغط للتحدث',
   didStatus: 'تحدّث مع نزيه مباشرة من الأعلى، أو اختر سؤالاً',   // نص الحالة عند تشغيل شخصية D-ID
@@ -924,7 +935,7 @@ function setBusy(on) { busy = on; micBtn.classList.toggle('busy', on); }
 /* مقاطعة نزيه: يوقف الكلام ويلغي الجواب الجاري، ليبدأ سؤال جديد فوراً */
 let askAbort = null, ignoreTalkUntil = 0;
 function interrupt() {
-  session++;
+  session++; speechMode = false;
   try { askAbort?.abort(); } catch {}
   askAbort = null; clearTimeout(pendingT); pendingQ = ''; pendingN = 0;
   stopSpeaking(); didTalking = false; app.classList.remove('talking'); lastSpokeAt = 0;
@@ -1052,6 +1063,7 @@ function retrieveContext(text) {
 async function ask(text, item = null) {
   text = (text || '').trim();
   if (!text) return;
+  if (speechMode) { if (!askSrc) return; speechMode = false; }     // أثناء كلمة الافتتاح: أصوات القاعة لا تقطعها، واللمس أو الكتابة يقطعها
   if (nazihActive()) interrupt();                // سؤال جديد أثناء الجواب: يقطع القديم
   resetIdle();                                   // السؤال بالصوت يُحسب تفاعلاً مثل اللمس
   const my = session;
@@ -1170,8 +1182,10 @@ const chipHTML = (c, cls = '') => `<button class="chip ${cls} ${c.cls || ''}" ro
 function renderCarousel(reshuffle = false) {
   if (reshuffle || !renderCarousel.order) {
     // بطاقات الوظائف موزعة بين الأسئلة: الاختبار أولاً، ثم الأسئلة بترتيب متنوع كل مرة
-    const qs = shuffle(BANK);
-    renderCarousel.order = [ACTIONS[0], ...qs.slice(0, 2), ACTIONS[1], ...qs.slice(2, 6), ACTIONS[2], ...qs.slice(6, 10), ACTIONS[3], ...qs.slice(10)];
+    // الأهم أولاً بترتيب ثابت (البلاغ، حماية المبلّغ، الهدية والرشوة)، ثم بقية الأسئلة بترتيب متنوع كل مرة
+    const TOP = ['report', 'protect', 'gift'], top = TOP.map((id) => BANK.find((b) => b.id === id)).filter(Boolean);
+    const qs = shuffle(BANK.filter((b) => !TOP.includes(b.id)));
+    renderCarousel.order = [ACTIONS[0], ...top.slice(0, 2), ACTIONS[1], ...top.slice(2), ...qs.slice(0, 3), ACTIONS[2], ...qs.slice(3, 7), ACTIONS[3], ...qs.slice(7)];
   }
   carousel.innerHTML = followUps.map((q, i) => chipHTML({ id: `ai:${i}`, icon: 'spark', q }, 'ai')).join('') + renderCarousel.order.map((c) => chipHTML(c)).join('');
   carousel.scrollTo({ left: 0 });
@@ -1506,11 +1520,13 @@ function renderQuiz() {
     const pct = quiz.score / n;
     const msg = pct >= 0.8 ? 'ممتاز! أنت سفير للنزاهة' : pct >= 0.5 ? 'جيد! وتستطيع الوصول للعلامة الكاملة' : 'لا بأس، تصفّح الأنظمة وحاول مرة ثانية';
     box.innerHTML = `<div class="score">${quiz.score} / ${n}</div><p class="score-msg">${msg}</p>
+      ${CONFIG.cert && pct >= CONFIG.certMin ? '<button class="btn gold" id="qCert">احصل على شهادة سفير النزاهة</button>' : ''}
       <div class="btn-row"><button class="btn" id="qAgain">اختبار جديد</button><button class="btn ghost" id="qShare">مشاركة النتيجة</button></div>
       <div class="review">${quiz.items.map((it, i) => `<div class="card"><b>${i + 1}. ${escapeHTML(it.q)}</b><br>
         <span class="${quiz.picks[i] === it.a ? 'ok' : 'no'}">${quiz.picks[i] === it.a ? 'إجابتك صحيحة' : 'إجابتك: ' + escapeHTML(it.o[quiz.picks[i]])}</span><br>
         الإجابة الصحيحة: ${escapeHTML(it.o[it.a])}<br><span class="meta">${escapeHTML(it.e)}</span></div>`).join('')}</div>`;
     $('#qAgain').onclick = () => { startQuiz(); $('#quiz').scrollTop = 0; };
+    if ($('#qCert')) $('#qCert').onclick = () => openCert('quiz');
     $('#qShare').onclick = async (e) => {
       const text = `حصلت على ${quiz.score} من ${n} في اختبار النزاهة مع «نزيه» — اليوم العالمي لمكافحة الفساد، جامعة حائل.`;
       try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); e.target.textContent = 'تم نسخ النتيجة'; } } catch {}
@@ -1560,7 +1576,9 @@ function renderScenario() {
     const msg = scn.best === n ? 'ما شاء الله، كل اختياراتك هي التصرف الأمثل' : scn.best >= n / 2 ? 'تصرفاتك طيبة، وبعضها فيه أكمل منه' : 'المواقف هذي تحتاج وقفة، والنزاهة تبدأ بالتصرف الصح';
     box.innerHTML = `<div class="score">${scn.best} / ${n}</div><p class="score-msg">${msg}</p>
       <p class="meta">عدد المواقف التي اخترت فيها التصرف الأمثل</p>
+      ${CONFIG.cert && n && scn.best / n >= CONFIG.certMin ? '<button class="btn gold" id="scnCert">احصل على شهادة سفير النزاهة</button>' : ''}
       <div class="btn-row"><button class="btn" id="scnAgain">مواقف جديدة</button><button class="btn ghost" id="scnQuiz">اختبر نفسك</button></div>`;
+    if ($('#scnCert')) $('#scnCert').onclick = () => openCert('scenario');
     $('#scnAgain').onclick = () => { startScenario(); };
     $('#scnQuiz').onclick = () => { runAction('quiz', ''); };
     const line = `اخترت التصرف الأمثل في ${scn.best} من ${n} مواقف. ${msg}.`;
@@ -1589,6 +1607,59 @@ function renderScenario() {
     showCaption('', o.c); speak(o.c);
   }));
 }
+
+
+/* ---------------- شهادة «سفير النزاهة» ----------------
+   تُرسم داخل المتصفح كصورة، والاسم لا يُرسل للخادم ولا يُحفظ (يُسجَّل فقط أن شهادة صدرت). النصوص في CONFIG أعلى الملف. */
+const certImgs = {};
+const loadImg = (src) => certImgs[src] || (certImgs[src] = new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }));
+async function drawCert(name) {
+  const W = 1600, H = 1131, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), F = '"IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif';
+  try { await document.fonts.load(`700 60px ${F}`, 'شهادة'); } catch {}
+  x.fillStyle = '#fbf8f1'; x.fillRect(0, 0, W, H);
+  x.strokeStyle = '#1B5E20'; x.lineWidth = 14; x.strokeRect(34, 34, W - 68, H - 68);
+  x.strokeStyle = '#C9A84C'; x.lineWidth = 4; x.strokeRect(58, 58, W - 116, H - 116);
+  const [uoh, naz] = await Promise.all([loadImg('assets/uoh-logo.png'), loadImg('assets/nazaha-logo.jpg')]);
+  const fit = (img, cx, top, h) => { if (!img) return; const w = img.width * (h / img.height); x.drawImage(img, cx - w / 2, top, w, h); };
+  x.globalCompositeOperation = 'multiply'; fit(uoh, W - 230, 100, 170); fit(naz, 250, 105, 160); x.globalCompositeOperation = 'source-over';
+  x.direction = 'rtl'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const line = (t, y, font, color) => { x.font = font; x.fillStyle = color; x.fillText(t, W / 2, y); };
+  line(CONFIG.certTitle, 330, `700 86px ${F}`, '#1B5E20');
+  x.fillStyle = '#C9A84C'; x.fillRect(W / 2 - 150, 395, 300, 5);
+  line('تُمنح هذه الشهادة إلى', 480, `500 40px ${F}`, '#52514e');
+  let size = 84; x.font = `700 ${size}px ${F}`;
+  while (x.measureText(name).width > W - 360 && size > 40) { size -= 4; x.font = `700 ${size}px ${F}`; }
+  x.fillStyle = '#17261c'; x.fillText(name, W / 2, 600);
+  x.strokeStyle = '#C9A84C'; x.lineWidth = 2; x.beginPath(); x.moveTo(W / 2 - 420, 668); x.lineTo(W / 2 + 420, 668); x.stroke();
+  line(CONFIG.certLine, 750, `500 42px ${F}`, '#17261c');
+  line(CONFIG.certEvent, 832, `500 32px ${F}`, '#52514e');
+  const d = new Date(), g = d.toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+  let h = ''; try { h = d.toLocaleDateString('ar-SA-u-ca-islamic-umalqura-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' }); } catch {}
+  line(h ? `${h} — الموافق ${g}` : g, 930, `500 30px ${F}`, '#52514e');
+  line('معاً .. لمجتمع نزيه وشفاف', 1010, `600 34px ${F}`, '#9a7b2a');
+  return c;
+}
+let certFrom = '';
+function openCert(from) {
+  certFrom = from; stopSpeaking(); openSheet('cert');
+  $('#certForm').hidden = false; $('#certOut').hidden = true; $('#certName').value = '';
+  setTimeout(() => $('#certName').focus(), 100);
+}
+$('#certForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault(); resetIdle();
+  const name = $('#certName').value.replace(/\s+/g, ' ').trim().slice(0, 60); if (name.length < 2) return;
+  const c = await drawCert(name);
+  $('#certImg').src = c.toDataURL('image/png');
+  $('#certForm').hidden = true; $('#certOut').hidden = false; $('#sheet-cert .sheet-body').scrollTop = 0;
+  track('cert', { from: certFrom });
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png')), file = new File([blob], 'nazaha-certificate.png', { type: 'image/png' });
+  $('#certSave').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  $('#certShare').hidden = !canShare;
+  $('#certShare').onclick = async () => { try { await navigator.share({ files: [file], text: 'حصلت على شهادة سفير النزاهة مع «نزيه» — اليوم العالمي لمكافحة الفساد، جامعة حائل.' }); } catch {} };
+  const say = 'مبروك! هذي شهادتك، احفظها أو شاركها.'; showCaption('', say); speak(say);
+});
 
 /* ---------------- الإحصائيات (أعداد مجهولة تُرسل للخادم، بدون أسماء ولا تسجيل صوت) ---------------- */
 const SCREEN = (() => {                              // هل هذا الجهاز هو الشاشة الرئيسية؟ (وجه Simli، أو ‎?screen=1‎ مرة واحدة)
@@ -1648,6 +1719,29 @@ $('#setText').addEventListener('change', (e) => { settings.text = e.target.check
 $('#setBig').addEventListener('change', (e) => { settings.big = e.target.checked; saveSettings(); applySettings(); });
 $('#setNew').addEventListener('click', () => { newChat(); closeSheets(); dlg.close(); });
 $('#setFull').addEventListener('click', () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); });
+
+
+/* ---------------- كلمة الافتتاح ----------------
+   من الإعدادات على الشاشة الرئيسية: اكتب الكلمة (بأسماء الضيوف) ثم «ألقِ الكلمة». نزيه يلقيها بصوته ووجهه الحي،
+   ولا يقطعها كلام القاعة. للإيقاف: زر الإيقاف في الإعدادات أو لمس زر المايك. */
+let speechMode = false;
+const speechText = () => { try { return localStorage.getItem('nazih.speech') || CONFIG.openingSpeech; } catch { return CONFIG.openingSpeech; } };
+async function giveSpeech() {
+  const text = speechText().replace(/\s+/g, ' ').trim(); if (!text) return;
+  ensureAudio(); leaveAttract(); closeSheets(); if (nazihActive()) interrupt();
+  const my = session; speechMode = true; ensureDidConnected();
+  showCaption('', text); setStatus(CONFIG.idleStatus);
+  try { if (did?.ensure) await Promise.race([did.ensure(), sleep(CONFIG.simliConnectWait * 1000)]); } catch {}     // الوجه الحي يتصل قبل أول كلمة
+  if (my !== session) { speechMode = false; return; }
+  await speak(text);
+  if (my === session) speechMode = false;
+  resetIdle();
+}
+$('#setSpeech').value = speechText();
+$('#setSpeech').addEventListener('input', (e) => { try { localStorage.setItem('nazih.speech', e.target.value); } catch {} });
+$('#speechReset').addEventListener('click', () => { try { localStorage.removeItem('nazih.speech'); } catch {} $('#setSpeech').value = CONFIG.openingSpeech; });
+$('#speechGo').addEventListener('click', () => { dlg.close(); giveSpeech(); });
+$('#speechStop').addEventListener('click', () => { speechMode = false; interrupt(); dlg.close(); });
 
 /* ---------------- الترحيب ---------------- */
 const onboard = $('#onboard');

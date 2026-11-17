@@ -90,6 +90,7 @@
       <div class="who"><b>نزيه</b><span>مساعدك الافتراضي للنزاهة ومكافحة الفساد</span></div>
       <p id="capQ" class="q" hidden></p>
       <p id="capA"></p>
+      <small class="ai-note">نزيه مساعد بالذكاء الاصطناعي، والمرجع هو نص النظام.</small>
     </section>
 
     <!-- ====== الأسئلة المتحركة ====== -->
@@ -147,6 +148,22 @@
       <div class="sheet-body" id="scn"></div>
     </section>
 
+    <section class="sheet" id="sheet-cert" hidden aria-label="شهادة سفير النزاهة">
+      <header><h2>شهادة سفير النزاهة</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
+      <div class="sheet-body center">
+        <form id="certForm">
+          <p>مبروك! اكتب اسمك كما تريده أن يظهر في الشهادة.</p>
+          <input id="certName" class="law-search" type="text" maxlength="60" autocomplete="name" placeholder="الاسم الثلاثي" enterkeyhint="done">
+          <button class="btn gold" type="submit">أصدر الشهادة</button>
+          <p class="meta">اسمك يُكتب على الشهادة في جهازك فقط، ولا يُحفظ عندنا.</p>
+        </form>
+        <div id="certOut" hidden>
+          <img id="certImg" alt="شهادة سفير النزاهة">
+          <div class="btn-row"><button class="btn" id="certSave">حفظ الشهادة</button><button class="btn ghost" id="certShare">مشاركة</button></div>
+        </div>
+      </div>
+    </section>
+
     <section class="sheet" id="sheet-report" hidden aria-label="قنوات البلاغ">
       <header><h2>قنوات البلاغ عن الفساد</h2><button class="x" data-close aria-label="إغلاق">✕</button></header>
       <div class="sheet-body">
@@ -196,6 +213,12 @@
   <label class="row local-only">نطق الإجابات بالصوت<input id="setVoice" type="checkbox" checked></label>
   <label class="row">خط أكبر<input id="setBig" type="checkbox"></label>
   <label class="row local-only">إظهار خانة الكتابة<input id="setText" type="checkbox" checked></label>
+  <details class="speech-box">
+    <summary>كلمة الافتتاح</summary>
+    <textarea id="setSpeech" rows="7" aria-label="نص كلمة الافتتاح"></textarea>
+    <p class="hint">اكتب الكلمة بأسماء الضيوف، ثم اضغط «ألقِ الكلمة». تُحفظ في هذا الجهاز فقط.</p>
+    <div class="btns"><button id="speechGo" class="primary">ألقِ الكلمة</button><button id="speechStop">إيقاف</button><button id="speechReset">النص الأصلي</button></div>
+  </details>
   <div class="btns">
     <button id="setNew">محادثة جديدة</button>
     <button id="setFull">ملء الشاشة</button>
@@ -215,6 +238,7 @@
 <script src="js/law-data.js"></script>
 <script src="js/laws-extra.js"></script>
 <script src="js/quiz-data.js"></script>
+<script src="js/quiz-extra.js"></script>
 <script src="js/scenario-data.js"></script>
 <script src="js/qr.js"></script>
 <script src="js/app.js"></script>
