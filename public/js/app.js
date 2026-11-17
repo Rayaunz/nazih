@@ -43,6 +43,7 @@ const CONFIG = {
   pushToTalk: true,            // المايك مقفل دائماً، ويفتح فقط عند ضغط زر «اضغط للتحدث» (يمنع التقاط كلام من حول الشاشة)
   talkMaxSeconds: 30,          // أقصى مدة لفتح المايك في الضغطة الواحدة          // مدة انتظار تحميل D-ID قبل اعتماد الصورة المتحركة
   waitIncomplete: true,        // إذا توقف الزائر في نص الجملة («وش الفرق بين الرشوة و...») ينتظر نزيه تكملتها بدل أن يجاوب على سؤال ناقص
+  fillerEarly: true,           // v27: عبارة «أبشر، لحظة» تُقال فور انتهاء كلام الزائر (أثناء تحويل صوته إلى نص) بدل انتظار التحويل. false = كما كان
   fillerAfterMs: 1100,         // بعد هذا الانتظار (ملّي ثانية) دون جواب يقول نزيه عبارة قصيرة. 0 = إيقاف
   fillers: ['أبشر، لحظة.', 'سَمّ، لحظة.', 'أبشر يا بعد حيي.', 'أبشر.'],
   ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
@@ -928,6 +929,15 @@ async function speak(text) {
 
 let fillerI = Math.floor(Math.random() * 4);
 const nextFiller = () => CONFIG.fillers[fillerI++ % CONFIG.fillers.length];
+/* v27: العبارة المبكرة. تبدأ مع تحويل الصوت إلى نص، ثم يكمل الجواب على المتكلّم نفسه دون انقطاع. إن لم يأتِ سؤال (ضجيج، خطأ) تنتهي بهدوء. */
+let earlyFill = null;
+function startEarlyFill(quiet, loudMs) {
+  if (!CONFIG.fillerEarly || CONFIG.fillerAfterMs <= 0 || !settings.voice || speechMode || pendingQ || speakingNow || didTalking) return;
+  if (quiet && loudMs < 900) return;               // في الاستماع التلقائي: لا يرد على صوت قصير قد يكون ضجيجاً
+  const sp = makeSpeaker(); sp.push(nextFiller()); T.mark('filler');
+  earlyFill = { sp, my: session };
+}
+function dropEarlyFill() { const e = earlyFill; earlyFill = null; if (e) e.sp.end(); }
 
 /* ---------------- المحادثة ---------------- */
 const capEl = $('#caption'), capQ = $('#capQ'), capA = $('#capA'), micBtn = $('#micBtn');
@@ -1083,11 +1093,15 @@ function retrieveContext(text) {
 async function ask(text, item = null) {
   text = (text || '').trim();
   if (!text) return;
-  if (speechMode) { if (!askSrc) return; speechMode = false; }     // أثناء كلمة الافتتاح: أصوات القاعة لا تقطعها، واللمس أو الكتابة يقطعها
-  if (nazihActive()) interrupt();                // سؤال جديد أثناء الجواب: يقطع القديم
+  if (speechMode) { if (!askSrc) { dropEarlyFill(); return; } speechMode = false; }     // أثناء كلمة الافتتاح: أصوات القاعة لا تقطعها، واللمس أو الكتابة يقطعها
+  const ef = earlyFill; earlyFill = null;
+  const early = ef && !item && ef.my === session ? ef.sp : null;      // «أبشر، لحظة» بدأت قبل قليل: الجواب يكمل بعدها
+  if (ef && !early) ef.sp.end();
+  if (!early && nazihActive()) interrupt();      // سؤال جديد أثناء الجواب: يقطع القديم
   resetIdle();                                   // السؤال بالصوت يُحسب تفاعلاً مثل اللمس
-  const my = session;
-  stopSpeaking(); closeSheets();
+  const my = session, earlySeq = early ? speakSeq : -1;
+  if (!early) stopSpeaking();
+  closeSheets();
   const intent = item ? null : detectIntent(text);
   if (intent) { runAction(intent, text); return; }
 
@@ -1103,7 +1117,8 @@ async function ask(text, item = null) {
   track('q', { kind: hit ? 'bank' : exact ? 'exact' : 'ai', id: hit ? hit.id : '', src: takeSrc(), text: hit ? '' : text });
   if (!hit && !exact) {
     // إذا تأخر الجواب أكثر من لحظة يقول نزيه عبارة قصيرة («أبشر، لحظة») فيحس الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع
-    let sp = null, firstSaid = false;
+    let sp = early, firstSaid = false;
+    if (sp) streamed = sp;
     const fillT = CONFIG.fillerAfterMs > 0 && settings.voice ? setTimeout(() => {
       if (my !== session || firstSaid || sp) return;
       stopSpeaking(); sp = makeSpeaker(); streamed = sp; sp.push(nextFiller()); T.mark('filler');
@@ -1162,7 +1177,9 @@ async function ask(text, item = null) {
   if (suggestions.length) addFollowUps(suggestions);
   if (hit?.sheet) openSheet(hit.sheet);
   setStatus(CONFIG.idleStatus);
-  if (streamed && !hit) await streamed.end(); else await speak(reply);
+  if (streamed && !hit) await streamed.end();
+  else if (early && my === session && speakSeq === earlySeq) { splitForSpeech(reply, speechChunk()).forEach((x) => early.push(x)); await early.end(); }   // جواب جاهز أو نص مادة: يُكمل بعد «أبشر» دون قطعها
+  else await speak(reply);
   if (my === session && !recState && !busy && !did) setStatus(CONFIG.idleStatus);
 }
 
@@ -1318,23 +1335,25 @@ let pendingQ = '', pendingN = 0, pendingT = null;
 const DANGLING = /(?:\.{2,}|…)\s*$|(?:^|\s)(?:و|أو|او|ثم|بين|من|في|على|عن|الى|إلى|مع|وال|ال|بال|لل|وبين|ولا|لو|اذا|إذا|يعني|اللي|الذي|التي|لكن|بس)\s*$/;
 /* تحويل التسجيل إلى نص ثم سؤال نزيه. quiet=true في الاستماع التلقائي: يتجاهل ما لا يُفهم بدون رسالة خطأ */
 const STT_NOISE = ['اشتركوا في القناه', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching'];
-async function processSpeech(blob, quiet) {
+async function processSpeech(blob, quiet, loudMs = 0) {
   setStatus('جاري تحويل كلامك لنص...'); setBusy(true);
   const my = session;
+  startEarlyFill(quiet, loudMs);
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/stt`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error);
     setBusy(false);
-    if (my !== session) return;
+    if (my !== session) { dropEarlyFill(); return; }
     T.mark('sttDone');
     const text = (data.text || '').trim(), n = norm(text);
     const junk = !text || (quiet && (n.replace(/\s/g, '').length < 4 || STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 12)));
-    if (junk) { if (!pendingQ) setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
+    if (junk) { dropEarlyFill(); if (!pendingQ) setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
     // سؤال انقطع في منتصفه (الزائر توقف ليفكر): نحتفظ به وننتظر التكملة، ثم نرسل الجملة كاملة
     const full = (pendingQ ? pendingQ + (/(?:^|\s)(?:و?ال|بال|لل)$/.test(pendingQ) ? '' : ' ') : '') + text;      // «وال» + «هدية» = «والهدية»
     clearTimeout(pendingT);
     if (CONFIG.waitIncomplete && pendingN < 2 && DANGLING.test(full)) {
+      dropEarlyFill();
       pendingQ = full.replace(/(?:\.{2,}|…)\s*$/, '').trim(); pendingN++;
       showCaption(pendingQ + ' …', '');
       setStatus('كمّل سؤالك.. أسمعك', 'listening');
@@ -1348,6 +1367,7 @@ async function processSpeech(blob, quiet) {
     pendingQ = ''; pendingN = 0;
     ask(full);
   } catch (e) {
+    dropEarlyFill();
     if (my !== session) return;
     console.warn('stt:', e?.message); setBusy(false);
     setStatus(quiet ? CONFIG.idleStatus : 'تعذّر سماعك الآن — اختر من الأسئلة أو اكتب سؤالك 😊', quiet ? '' : 'err');
@@ -1372,11 +1392,11 @@ async function startAutoListen() {
   const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
   let noise = 0.012, rec = null, chunks = [], loudMs = 0, lastLoud = 0, startedAt = 0, last = performance.now(), forced = false, barge = false;
   const finish = (keep) => {
-    const r = rec; if (!r) return;
+    const r = rec, heard = loudMs; if (!r) return;
     if (keep) { T.reset(); T.marks.lastWord = lastLoud; T.mark('recEnd'); }
     rec = null; forced = false; barge = false; micLevel = 0; micBtn.classList.remove('listening');
     const parts = chunks; chunks = [];
-    r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), true) : null;
+    r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), true, heard) : null;
     try { r.stop(); } catch {}
     if (!keep) setStatus(CONFIG.idleStatus);
   };
