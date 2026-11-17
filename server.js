@@ -49,7 +49,10 @@ const SYSTEM_PROMPT = `
 - ابدأ بالجواب مباشرة من أول كلمة، واجعل الجملة الأولى قصيرة وفيها خلاصة الجواب. لا تبدأ بالتحية ولا بتكرار السؤال ولا بمقدمات، إلا إذا حيّاك الزائر فردّ التحية باختصار.
 - إذا كان في السؤال أكثر من جزء فأجب عن كل جزء بجملة أو جملتين بالترتيب.
 - سؤال الزائر يصلك محوّلاً من صوته وقد تكون فيه أخطاء سمع؛ افهم المقصود الأقرب في سياق النزاهة والأنظمة وأجب عليه، ولا تطلب التوضيح إلا إذا تعذّر الفهم تماماً.
-- اكتب الأرقام بطريقة سهلة النطق.
+- اكتب الأرقام بطريقة سهلة النطق: الأعداد وأرقام المواد والمدد والمبالغ بالحروف (المادة الثامنة، ثلاث سنوات، مئة ألف ريال)، ولا تكتب أقواساً ولا شرطات مائلة ولا اختصارات.
+- تكلّم كما يتكلم إنسان واقف أمام الزائر لا كمن يقرأ ورقة: جمل قصيرة بينها فواصل طبيعية، وكلمات ربط مألوفة (يعني، بمعنى، وعشان كذا، وبالمناسبة)، ونوّع بدايات جملك فلا تكرر «حسب المادة» أو «أبشر» في كل جواب.
+- العبارات الودّية (حياك الله، الله يعطيك العافية، إن شاء الله، ما شاء الله) استعملها في موضعها الطبيعي فقط: عند التحية أو الشكر أو الدعاء، مرة واحدة في الجواب على الأكثر، ولا تحشرها في كل رد.
+- إذا شكرك الزائر أو ودّعك فردّ بجملة قصيرة دافئة فقط. وإذا كان سؤاله عن موقف يقلقه فابدأ بكلمة تطمين قصيرة ثم الجواب.
 - بعد الجواب أضف سطراً أخيراً يبدأ بالرمز § وفيه سؤالان قصيران قد يسألهما الزائر بعد ذلك، يفصل بينهما الرمز | (مثال: § كيف أبلّغ عن فساد؟ | هل هوية المبلّغ محمية؟). لا تذكر هذا السطر في الجواب نفسه.
 
 مصادرك:
@@ -281,8 +284,46 @@ function ttsRequest(provider, text, pcm, signal) {       // يرجع { r, rate }
     method: 'POST', headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal,
   }).then((r) => ({ r, rate: 24000 }));
 }
+
+/* ---------- تهيئة النص للنطق (v22) ----------
+   النص المكتوب للعين غير النص المنطوق: هنا يُنظَّف ما لا يُنطق (رموز، أقواس الترقيم) وتُضبط كلمات يخطئ فيها الصوت الآلي.
+   - لفظ الجلالة: يُفخَّم بعد الفتح والضم (حياك الله، إن شاء الله، والله) ويبقى مرققاً بعد الكسر (بسم الله، لله، بالله).
+     طريقة كتابته للصوت تُختار بالمتغير TTS_ALLAH (رقم من 0 إلى 5، جرّبها من صفحة ‎/say.html‎ واختر ما يُنطق صح مع صوتك). 0 = بدون تغيير.
+   - لإضافة كلمة يخطئ فيها الصوت: TTS_FIXES في Environment بصيغة «كلمة=نطقها» مفصولة بفاصلة منقوطة، مثل: نزاهة=نَزاهة;حائل=حائِل */
+const ALLAH_FORMS = ['', 'اللهُ', 'اللَّه', 'اللّٰه', 'اللاه', 'ٱللَّه'];
+const ALLAH_PICK = Math.min(5, Math.max(0, parseInt(process.env.TTS_ALLAH ?? '2', 10) || 0));
+const THIN_BEFORE = '(?:بسم|باسم|بإذن|باذن|بعون|بفضل|بحمد|بتوفيق|برحمة|بأمر|بقدرة|بمشيئة|في سبيل|على بركة|في ذمة|لوجه|في أمان|في حفظ|إلى|الى)';
+const USER_FIXES = (process.env.TTS_FIXES || '').split(/[;؛\n]/).map((x) => x.split('=').map((y) => y.trim())).filter((x) => x.length === 2 && x[0] && x[1]);
+function sayable(text, allah = ALLAH_PICK) {
+  let t = String(text);
+  // ما لا يُنطق
+  t = t.replace(/[•*§«»"“”]/g, ' ').replace(/\s[—–-]\s/g, '، ').replace(/[—–]/g, '، ');
+  t = t.replace(/(^|\n)\s*\(\s*([أ-ي]|\d{1,2})\s*\)\s*(?=\S)/g, '$1$2، ');                       // (أ) (1) في أول البنود
+  t = t.replace(/(^|\n)\s*([أ-ي]|\d{1,2})\s*[.)\-]\s+/g, '$1$2، ');                   // أ. / 1- في أول السطر
+  t = t.replace(/[()\[\]]/g, ' ');
+  t = t.replace(/\n{2,}/g, '. ').replace(/([^.؟!،؛:\s])\s*\n/g, '$1. ').replace(/\n/g, ' ');
+  // اختصارات وأرقام
+  t = t.replace(/م\s*\/\s*(\d+)/g, 'ميم $1').replace(/أ\s*\/\s*(\d+)/g, 'ألف $1');
+  t = t.replace(/(\d)\s*هـ?(?![\u0621-\u0652\u0670\u0671])/g, (m, d) => (/ه/.test(m) ? `${d} هجري` : m)).replace(/(\d{4})\s*م(?![\u0621-\u0652\u0670\u0671])/g, '$1 ميلادي');
+  t = t.replace(/(\d)\s*%/g, '$1 بالمئة').replace(/(?<![\d@.\/])980(?![\d@.\/])/g, 'تسعمئة وثمانين');
+  t = t.replace(/\bQR\b/gi, 'كيو آر');
+  // لفظ الجلالة
+  const form = ALLAH_FORMS[allah];
+  if (form) {
+    const keep = '\u0001';                                                              // علامة مؤقتة لما يبقى مرققاً
+    t = t.replace(new RegExp(`(${THIN_BEFORE})\\s+الله(?![\\u0621-\\u0652\\u0670\\u0671])`, 'g'), `$1 ${keep}`);
+    t = t.replace(/(?<![\u0621-\u0652\u0670\u0671])اللهم(?![\u0621-\u0652\u0670\u0671])/g, `${form}ُمَّ`);
+    t = t.replace(/(?<![\u0621-\u0652\u0670\u0671])([وفت])الله(?![\u0621-\u0652\u0670\u0671])/g, (m, p) => `${p}َ${form}`);
+    t = t.replace(/(?<![\u0621-\u0652\u0670\u0671])الله(?![\u0621-\u0652\u0670\u0671])/g, form);
+    t = t.split(keep).join('الله');
+  }
+  for (const [a, b] of USER_FIXES) t = t.split(a).join(b);
+  return t.replace(/\s+([،.؟!؛:])/g, '$1').replace(/،\s*،/g, '،').replace(/\s{2,}/g, ' ').trim();
+}
 let ttsWarned = 0;
 async function ttsFetch(text, pcm, signal) {
+  text = text.startsWith('\u0002') ? text.slice(1) : sayable(text);          // \u0002 في أول النص = انطقه كما هو (صفحة التجربة)
+
   if (TTS_PROVIDER !== 'openai') {
     try {
       const out = await ttsRequest(TTS_PROVIDER, text, pcm, signal);
@@ -296,9 +337,10 @@ async function ttsFetch(text, pcm, signal) {
 
 async function handleTTS(req, res) {
   if (needKey(res)) return;
-  const { text } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
+  const { text, raw, allah } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
   if (!text) return sendJSON(res, 400, { error: 'no text' });
-  const key = String(text).slice(0, 1500);
+  // raw: انطق النص كما هو. allah: جرّب طريقة كتابة أخرى للفظ الجلالة (لصفحة التجربة ‎/say.html‎)
+  const key = raw === true ? '\u0002' + String(text).slice(0, 1500) : Number.isInteger(allah) && allah >= 0 && allah <= 5 ? '\u0002' + sayable(String(text).slice(0, 1500), allah) : String(text).slice(0, 1500);
   const cached = TTS_CACHE.get(key);
   if (cached) { TTS_CACHE.delete(key); TTS_CACHE.set(key, cached); return sendAudio(res, cached, true); }
   const { r, provider } = await ttsFetch(key, false, withTimeout(30_000));
