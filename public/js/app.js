@@ -802,6 +802,7 @@ function makeSimliAvatar(own) {
     return new Uint8Array(out.buffer);
   }
   const stopTalk = () => { clearTimeout(talkT); talkT = null; };
+  let playEnd = 0, via = 'own';                      // متى ينتهي ما أُرسل إلى الوجه الحي، وبأي طريق نُطق آخر مقطع
   const pcmPending = new Map();                       // طلبات صوت بدأت مسبقاً (المقطع التالي يُجهَّز أثناء نطق الحالي)
   function pcmFetch(text) {
     let p = pcmPending.get(text);
@@ -834,9 +835,10 @@ function makeSimliAvatar(own) {
         /* v28: مخزن صغير قبل الإرسال. كان الصوت يُرسل إلى الوجه الحي فور وصوله من الشبكة، فإذا وصل متقطعاً أو أبطأ من سرعة الكلام
            فرغ ما عند الوجه فسكت لحظات وتوقف الفم (تقطيع وعدم تطابق). الآن يُجمع أول 0.7 ثانية، وإن كان الوصول أبطأ من الكلام يُجمع المقطع كله ثم يُرسل متصلاً. */
         const reader = r.body.getReader(); let carry = null, total = 0, t0 = 0, got = 0, tIn = 0, hold = [], held = 0, mode = 'pre';
+        via = 'own';
         const PRE = 22400, send = (u) => {                                                         // 22400 بايت = 0.7 ثانية
           for (let i = 0; i < u.length; i += 6000) client.sendAudioData(u.slice(i, i + 6000));
-          if (!total && u.length) { t0 = performance.now(); audio.volume = settings.volume; own.emit('TALKING'); stopTalk(); }
+          if (!total && u.length) { t0 = Math.max(performance.now(), playEnd); audio.volume = settings.volume; own.emit('TALKING'); stopTalk(); }   // يبدأ بعد نهاية ما سبقه عند الوجه
           total += u.length;
         };
         const flush = () => { const h = hold; hold = []; held = 0; h.forEach(send); };
@@ -862,17 +864,21 @@ function makeSimliAvatar(own) {
         } catch (e) { console.warn('Simli stream:', e?.message); if (my === token && client) flush(); }
         if (DEBUG && got) { T.stream = `${((got / 32000) / (Math.max(1, performance.now() - tIn) / 1000)).toFixed(1)}x ${mode}`; T.show(); }
         if (!total) return own.functions.speak({ input });
-        const remain = (total / 32000) * 1000 - (performance.now() - t0) + 200;                     // 32000 بايت = ثانية صوت
+        playEnd = t0 + (total / 32000) * 1000; via = 'simli';                                        // 32000 بايت = ثانية صوت
+        const remain = playEnd - performance.now() + 200;
         stopTalk(); talkT = setTimeout(() => { talkT = null; if (my === token) own.emit('IDLE'); }, Math.max(200, remain));
       },
+      /* v29: كم ينتظر طابور النطق قبل إرسال المقطع التالي. يُرسل قبل نهاية الحالي بقليل فيتصل الكلام عند الوجه بلا سكتة بين الجمل.
+         -1 = المقطع نُطق بالصوت الاحتياطي، فيُنتظر انتهاؤه بالطريقة المعتادة. */
+      leadMs() { return via === 'simli' && client ? Math.max(0, playEnd - performance.now() - 450) : -1; },
       interrupt() {
-        token++; stopTalk();
+        token++; stopTalk(); playEnd = 0;
         try { client?.ClearBuffer(); } catch {}
         own.functions.interrupt();
       },
       toggleMicState() {}, reconnect: connect, connect,
     },
-    stop() { const c = client; client = null; setLive(false); try { c?.stop(); } catch {} },
+    stop() { const c = client; client = null; playEnd = 0; setLive(false); try { c?.stop(); } catch {} },
   };
 }
 if (OWN) window.DID_AGENTS_API = window.NAZIH_SIMLI ? makeSimliAvatar(makeOwnAvatar()) : makeOwnAvatar();
@@ -908,7 +914,10 @@ function makeSpeaker() {
         }
         if (!live()) return;
         if (!ok) { dropDid(err?.message); break; }                 // cur يبقى ليُنطق بالصوت الاحتياطي
-        await waitDidDone(cur.length); cur = null;
+        const lead = did.functions.leadMs ? did.functions.leadMs() : -1;
+        if (lead < 0) await waitDidDone(cur.length);
+        else for (const end = performance.now() + lead; live() && performance.now() < end;) await sleep(Math.min(120, Math.max(10, end - performance.now())));
+        cur = null;
       }
       // ---- الصوت الاحتياطي (OpenAI ثم صوت المتصفح) ----
       for (;;) {
