@@ -7,10 +7,10 @@ const CONFIG = {
   avatarImage: 'assets/avatar.jpg',
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
   maxRecordSeconds: 25,
-  silenceMs: 900,              // يوقف التسجيل تلقائياً بعد هذا الصمت (أقل = رد أسرع، لكن قد يقطع من يتوقف ليفكر)
+  silenceMs: 750,              // (v34: كان 900) يوقف التسجيل تلقائياً بعد هذا الصمت (أقل = رد أسرع، لكن قد يقطع من يتوقف ليفكر)
   handsFree: true,             // true: نزيه يسمع تلقائياً بدون ضغط زر. false: لازم ضغط زر التحدث. (يمكن التبديل من الرابط: ‎?mic=auto‎ أو ‎?mic=button‎)
   autoMinLevel: 0.045,         // أقل مستوى صوت يُعتبر كلاماً في الاستماع التلقائي (ارفعه في الأماكن المزعجة)
-  bargeIn: false,              // المقاطعة بالصوت: نزيه يسكت إذا تكلم الزائر أثناء جوابه (تجريبي، فعّله بالرابط ‎?barge=1‎ وجرّبه في مكان الفعالية)
+  bargeIn: true,               // المقاطعة بالصوت: نزيه يسكت إذا تكلم الزائر أثناء جوابه أو تفكيره (v34: مفعّلة افتراضياً. لإيقافها في جهاز: ‎?barge=0‎)
   autoMinSpeechMs: 450,        // أقصر كلام يُقبل (يتجاهل الطقطقة والأصوات القصيرة)
   showWelcome: false,          // true لإظهار رسالة الترحيب عند فتح الموقع وبعد الخمول
   quizLength: 5,               // عدد أسئلة «اختبر نفسك» في كل مرة
@@ -45,11 +45,17 @@ const CONFIG = {
   waitIncomplete: true,        // إذا توقف الزائر في نص الجملة («وش الفرق بين الرشوة و...») ينتظر نزيه تكملتها بدل أن يجاوب على سؤال ناقص
   /* كلمة قصيرة فور انتهاء كلام الزائر («أبشر») ليعرف أنه سُمع، ثم يأتي الجواب. بلا «لحظة».
      ack: 'auto' مع أول سؤال صوتي فقط من كل زائر · 'always' مع كل سؤال صوتي · 'never' لا تُقال. تُغيَّر من الإعدادات في الشاشة.
-     (v33: أُلغيت الكلمة المتأخرة: كانت تُقال قبل الجواب بجزء من الثانية فتؤخره ولا تفيد.) */
-  ack: 'auto',
+     (v33: أُلغيت الكلمة المتأخرة: كانت تُقال قبل الجواب بجزء من الثانية فتؤخره ولا تفيد.)
+     v34: الافتراضي 'never' حسب ملاحظة المشرف: نزيه يجاوب مباشرة. (جهاز اختير فيه خيار آخر من الإعدادات يبقى على اختياره) */
+  ack: 'never',
   fillers: ['أبشر.', 'سَمّ.', 'طيّب.'],
   ownMouth: false,             // أفتار الموقع (الجوالات): false = صورة نزيه بحركة رأس ورمش خفيفة والصوت فقط، true = يحرّك الفم أيضاً
-  simliSdk: ['https://esm.sh/simli-client', 'https://cdn.jsdelivr.net/npm/simli-client/+esm'],   // مكتبة Simli للمتصفح (تُحمَّل عند الحاجة فقط)
+  /* مكتبة Simli للمتصفح (تُحمَّل عند الحاجة فقط). v34: مثبّتة على إصدار محدد. كانت تُحمَّل «آخر إصدار» دائماً،
+     وصدرت ثلاثة إصدارات بين 19 و27 أكتوبر 2026، فيتغيّر سلوك الوجه دون أي تعديل في الموقع.
+     3.2.0 (27 أكتوبر) هو الإصدار الذي يطابق الكود الحالي، وفيه صار الاتصال عبر LiveKit افتراضياً بدل الاتصال المباشر (P2P).
+     للمقارنة على الشاشة بالإصدار الذي قبله (اتصال مباشر): ‎?simliv=3.1.0‎ ، وللرجوع: ‎?simliv=3.2.0‎ (يُحفظ في ذلك الجهاز).
+     لا تستعمل 3.0.x: واجهتها مختلفة (close بدل stop) فلا يعمل معها الوجه الحي. */
+  simliVersion: '3.2.0',
   simliConnectWait: 9,         // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
   greeting: 'يا هلا والله، حيّاك الله! أنا نزيه. وش بغيت تعرف عن النزاهة ومكافحة الفساد؟ اسألني، أو اختر من الأسئلة، أو قل: اختبرني.',
 };
@@ -368,14 +374,15 @@ function drawOwn(t) {
   emph += (Math.max(0, voiceLevel - lvlSlow * 0.9) - emph) * Math.min(1, dt / 140);       // نبرة التشديد
   // إيماءة عشوائية كل بضع ثوانٍ أثناء الكلام (ميل أو إيماءة أو التفاتة خفيفة) حتى لا تتكرر الحركة
   if (speaking && t > nextGest) {
-    gest = { at: t, dur: 900 + Math.random() * 900, tilt: (Math.random() - 0.5) * 0.034, nod: (Math.random() - 0.3) * 9, sway: (Math.random() - 0.5) * 12 };
+    // v34: نصف السعة السابقة. العينان في الصورة ثابتتان، فكلما زاد ميل الرأس والتفاته بدت النظرة تائهة
+    gest = { at: t, dur: 1100 + Math.random() * 900, tilt: (Math.random() - 0.5) * 0.017, nod: (Math.random() - 0.3) * 4.5, sway: (Math.random() - 0.5) * 6 };
     nextGest = t + gest.dur + 500 + Math.random() * 1800;
   }
   const gp = Math.min(1, (t - gest.at) / gest.dur), gk = Math.sin(gp * Math.PI) * talkAmt;  // تصعد ثم ترجع
-  const TA = talkAmt * (CONFIG.ownMouth || LOOK ? 1 : 0.45);            // بدون تحريك الفم: حركة الرأس أهدأ
+  const TA = talkAmt * (CONFIG.ownMouth || LOOK ? 1 : 0.3);             // بدون تحريك الفم: حركة الرأس أهدأ (v34: كان 0.45)
   const M = window.NAZIH_SIMLI && !LOOK ? 0 : 1;                         // v31: إذا تعذّر الوجه الحي تبقى الصورة ثابتة مع الصوت (رأس يتمايل وفم لا يتحرك شكله غريب)
   const tilt = M * (0.0045 * Math.sin(t / 2700) + 0.002 * Math.sin(t / 1130 + 1) + TA * (0.007 * Math.sin(t / 830) + 0.004 * Math.sin(t / 410 + 2)) + gk * gest.tilt);
-  const nod = M * (1.6 * Math.sin(t / 1900) + TA * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 9 + mouthOpen * 1.5 + gk * gest.nod);
+  const nod = M * (1.6 * Math.sin(t / 1900) + TA * (2.2 * Math.sin(t / 560) + 1.2 * Math.sin(t / 233 + 1)) + emph * 4 + mouthOpen * 1.5 + gk * gest.nod);   // v34: إيماءة التشديد كانت emph * 9
   const sway = M * (2.2 * Math.sin(t / 3300) + TA * 2.5 * Math.sin(t / 1500 + 1) + gk * gest.sway);
   const zoom = M * (0.0025 * Math.sin(t / 2300) + TA * 0.004 + emph * 0.006);
   const brow = M * Math.min(3.2, emph * 9 + (gk > 0.6 ? 0.8 : 0));
@@ -587,7 +594,7 @@ function ensureDidConnected() {
   if (!didDown) return Promise.resolve();
   if (didReconnecting) return didReconnecting;
   document.body.classList.add('did-reconnecting');
-  $('#didCover span').textContent = 'لحظة.. نزيه يستعد';
+  $('#didCover span').textContent = 'نزيه يستعد…';
   didReconnecting = (async () => {
     const t0 = performance.now();
     try { didFindButton(/reconnect/i)?.click(); } catch {}
@@ -769,7 +776,9 @@ function makeSimliAvatar(own) {
   }
   async function loadSdk() {
     if (sdk) return sdk;
-    for (const url of CONFIG.simliSdk) {
+    let v = CONFIG.simliVersion;
+    try { const q = params.get('simliv'); if (q && /^[\d.]+$/.test(q)) localStorage.setItem('nazih.simliv', q); v = localStorage.getItem('nazih.simliv') || v; } catch {}
+    for (const url of [`https://esm.sh/simli-client@${v}`, `https://cdn.jsdelivr.net/npm/simli-client@${v}/+esm`]) {
       try { const m = await import(url); if (m.SimliClient) return (sdk = m); } catch (e) { console.warn('Simli SDK:', url, e?.message); }
     }
     throw new Error('تعذّر تحميل مكتبة Simli');
@@ -794,7 +803,8 @@ function makeSimliAvatar(own) {
         catch (e) { try { c.stop?.(); } catch {} throw e; }
         client = c; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster(); face('live');
         if (ackMode() !== 'never') CONFIG.fillers.forEach((f) => pcmFetch(f));   // تجهيز كلمات الرد القصيرة مسبقاً
-        if (DEBUG) { T.connect = 'simli ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
+        if (window.NAZIH_SCREEN) setTimeout(warmAnswers, 5000);
+        if (DEBUG) { T.connect = 'simli ' + (performance.now() / 1000).toFixed(1) + 's (sdk ' + (localStorage.getItem('nazih.simliv') || CONFIG.simliVersion) + ')'; T.show(); }
         return true;
       } catch (e) {
         console.warn('Simli connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false); B.add('simli-off');   // تعذّر الوجه الحي: تظهر صورة نزيه ليكمل بها
@@ -861,7 +871,7 @@ function makeSimliAvatar(own) {
            فرغ ما عند الوجه فسكت لحظات وتوقف الفم (تقطيع وعدم تطابق). الآن يُجمع أول 0.7 ثانية، وإن كان الوصول أبطأ من الكلام يُجمع المقطع كله ثم يُرسل متصلاً. */
         const reader = r.body.getReader(); let carry = null, total = 0, t0 = 0, got = 0, tIn = 0, hold = [], held = 0, mode = 'pre';
         via = 'own';
-        const PRE = 22400, send = (u) => {                                                         // 22400 بايت = 0.7 ثانية
+        const PRE = 12800, send = (u) => {                                                         // 12800 بايت = 0.4 ثانية (v34: كان 0.7)
           for (let i = 0; i < u.length; i += 6000) client.sendAudioData(u.slice(i, i + 6000));
           if (!total && u.length) { t0 = Math.max(performance.now(), playEnd); audio.volume = settings.volume; own.emit('TALKING'); stopTalk(); }   // يبدأ بعد نهاية ما سبقه عند الوجه
           total += u.length;
@@ -966,15 +976,29 @@ function makeSpeaker() {
   };
 }
 const speechChunk = () => (did && !did.own ? 700 : 320);    // مقاطع أقصر للصوت الاحتياطي حتى يبدأ النطق أسرع
+function speechParts(text) {
+  // أول مقطع قصير (الجملة الأولى) ليبدأ الكلام بسرعة، ثم البقية بمقاطع أطول
+  const m = /[.؟?!،؛:\n]/.exec(text.slice(25)), cut = m ? 25 + m.index + 1 : 0;
+  if (cut && cut <= 170 && cut < text.length - 15) return [text.slice(0, cut), ...splitForSpeech(text.slice(cut), speechChunk())];
+  return splitForSpeech(text, speechChunk());
+}
 async function speak(text) {
   stopSpeaking();
   if (!text || (!did && !settings.voice)) return;
   const sp = makeSpeaker();
-  // أول مقطع قصير (الجملة الأولى) ليبدأ الكلام بسرعة، ثم البقية بمقاطع أطول
-  const m = /[.؟?!،؛:\n]/.exec(text.slice(25)), cut = m ? 25 + m.index + 1 : 0;
-  if (cut && cut <= 170 && cut < text.length - 15) { sp.push(text.slice(0, cut)); splitForSpeech(text.slice(cut), speechChunk()).forEach((x) => sp.push(x)); }
-  else splitForSpeech(text, speechChunk()).forEach((x) => sp.push(x));
+  speechParts(text).forEach((x) => sp.push(x));
   await sp.end();
+}
+/* v34: صوت الأجوبة الجاهزة يُجهَّز في ذاكرة الخادم بعد أول اتصال للوجه الحي (وقت الفراغ فقط)، فيُنطق فوراً حين يختارها زائر.
+   التكلفة: مرة واحدة بعد كل تشغيل للخادم. */
+let warmedAnswers = false;
+async function warmAnswers() {
+  if (warmedAnswers) return; warmedAnswers = true;
+  const m = ackMode();
+  for (const b of BANK) for (const part of speechParts(m === 'never' ? b.a.replace(ACK_LEAD, '') : b.a)) {
+    while (nazihActive() || autoMic?.recording || recState) await sleep(2000);
+    try { const r = await fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: part, screen: SCREEN }) }); await r.arrayBuffer(); if (!r.ok) return; } catch { return; }
+  }
 }
 
 let fillerI = Math.floor(Math.random() * 3);
@@ -1049,7 +1073,6 @@ const INTENT_LINES = {
   scenario: 'أبشر، بعرض عليك مواقف من الواقع، واختر وش تسوي.',
   laws: 'تفضّل، هذه الأنظمة ذات العلاقة. يمكنك البحث في مواد نظام الهيئة.',
 };
-function findBank(text) { const n = norm(text); return BANK.find((b) => norm(b.q) === n) || BANK.find((b) => b.k.some((k) => n.includes(k))); }
 
 /* =========================================================
  *  البحث في الأنظمة (محلياً داخل الموقع)
@@ -1141,7 +1164,7 @@ const CONCEPTS = [
   { id: 'state', re: /الملك|ولي العهد|دستور|حقوق (?:ال)?(?:انسان|مواطن)|القضاء|السلط[هت] (?:ال)?(?:قضائي|تنفيذي|تنظيمي)/, laws: ['basic'], pins: {}, terms: [] },
 ];
 const WHOLE = new Set(['bribery']);          // قصير وهو قلب الفعالية: يُرسل كاملاً متى مسّه السؤال
-const CTX_BUDGET = 13000;                    // حروف المواد المرسلة مع السؤال
+const CTX_BUDGET = 9500;                     // حروف المواد المرسلة مع السؤال (v34: كان 13000؛ أقل = يبدأ الرد أسرع وأقل خلطاً)
 const FOLLOW_RE = /(?:^|\s)(?:تاكد|متاكد|اكيد|صدق|وضح|فصل لي|تفصيل|اكثر|كمل|اشرح|عيد|اعد|مثال|عقوبتها|عقوبته|عقوبتهم|حكمها|حكمه|عنها|عنه|فيها|منها|عليها|عليه|هالشي|نفس الشي|وغيره|وغيرها)(?:\s|$)/;
 let LAW_INDEX = null, prevQ = null;          // prevQ: آخر سؤال له موضوع (للأسئلة التابعة)
 const artNo = (a) => (/مكرر|ملحق|تمهيد/.test(a.title) ? null : articleNumber(a.title.replace(/^.*?ماده\s*|^المادة\s*/, '')));
@@ -1203,7 +1226,7 @@ function retrieveContext(text) {
   const picked = [];                          // بترتيب الأولوية: المثبّتة، ثم النظام الكامل، ثم الأقرب من كل نظام، ثم الأقرب إجمالاً
   for (const c of concepts) for (const [id, nums] of Object.entries(c.pins)) for (const num of nums) { const x = all.find((y) => y.e.law.id === id && y.e.num === num); if (x) picked.push({ ...x, pin: true }); }
   const named = lawIds.length === 1 ? textLaws().find((l) => l.id === lawIds[0]) : null;
-  const wholeIds = [...new Set([...(named && named.articles.reduce((s, a) => s + a.body.length + 60, 0) <= 12600 ? [named.id] : []), ...[...lawIds, ...cLaws].filter((id) => WHOLE.has(id))])];
+  const wholeIds = [...new Set([...(named && named.articles.reduce((s, a) => s + a.body.length + 60, 0) <= CTX_BUDGET - 400 ? [named.id] : []), ...[...lawIds, ...cLaws].filter((id) => WHOLE.has(id))])];
   for (const id of wholeIds) picked.push(...byLaw(id).map((x) => ({ ...x, pin: true })));
   for (const id of lawIds) { const mine = byLaw(id); picked.push(...best(mine, 6)); if (mine[0]) picked.push(mine[0]); }
   if (!lawIds.length && !concepts.length) {     // سؤال عام: المتصل فعلاً فقط. مادة لا يجمعها بالسؤال إلا كلمة شائعة («جريمة») تُترك، وإلا ذكرها النموذج حشواً
@@ -1228,11 +1251,14 @@ function retrieveContext(text) {
   const hay = qn + ' ' + tl.join(' ');
   const courtQ = concepts.some((c) => c.id === 'grievance') || lawIds.some((id) => id === 'bog' || id === 'bog-proc');     // سؤال عن التظلم والمحاكم الإدارية: أجوبة نزاهة المعتمدة لا تُرفق إلا إذا طابقته بوضوح
   const hayB = hay.replace(/تحقيق/g, ' ');     // «التحقيق» ليست «حقّي»
-  const bank = BANK.map((b) => ({ b, m: b.k.filter((k) => hayB.includes(k)).length })).filter((x) => x.m >= (courtQ ? 2 : 1)).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);
+  // v34: كلمة قصيرة عامة وحدها («حائل»، «مثال»، «حقي»، «اخاف») لا تكفي لإرفاق جواب جاهز، وإلا ذكره النموذج في سؤال لا علاقة له به
+  const bank = BANK.map((b) => { const ks = b.k.filter((k) => hayB.includes(k)); return { b, m: ks.length, strong: ks.some((k) => k.length >= 5) }; })
+    .filter((x) => x.m >= 2 || (!courtQ && x.m === 1 && x.strong)).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);
   lastCtxInfo = (order.map((id) => `${id}(${chosen.filter((c) => c.e.law.id === id).length})`).join(' ') || '-') + (bank.length ? ' | bank:' + bank.map((b) => b.id).join(',') : '') + (follow ? ' | follow-up' : '');
-  return '【قائمة الأنظمة المضافة: هذه كلها، ولا يوجد غيرها】\n' + textLaws().map((l) => l.name).join('؛ ') + '.\n\n'
-    + (bank.length ? '【أجوبة معتمدة】\n' + bank.map((b) => `س: ${b.q}\nج: ${b.a}`).join('\n') + '\n\n' : '')
-    + '【المواد】\n' + (chosen.length ? chosen.map((c) => `【${c.e.law.name} — ${c.e.a.title}】\n${c.body}`).join('\n\n') : '(لم يُعثر في الأنظمة المضافة على مواد تتعلق بهذا السؤال)');
+  // v34: العناوين بصيغة لا يقلدها النموذج في كلامه («المتاح أمامي»...). الخادم يقرأ عناوين المواد 【النظام — المادة】 ليتحقق من أرقامها
+  return '【الأنظمة التي تعرفها، ولا تعرف غيرها】\n' + textLaws().map((l) => l.name).join('؛ ') + '.\n\n'
+    + (bank.length ? '【أجوبة موثقة】\n' + bank.map((b) => `س: ${b.q}\nج: ${b.a}`).join('\n') + '\n\n' : '')
+    + '【نصوص المواد】\n' + (chosen.length ? chosen.map((c) => `【${c.e.law.name} — ${c.e.a.title}】\n${c.body}`).join('\n\n') : '(لا يوجد نص يتعلق بهذا السؤال)');
 }
 
 /* سؤال الزائر يطابق سؤالاً معتمداً (بعد حذف أدوات السؤال والحشو)؟ */
@@ -1316,8 +1342,8 @@ async function ask(text, item = null) {
       clearTimeout(fillT); firstSaid = true; streamed = null;
       if (my !== session) return;                  // قوطع عمداً
       console.warn('chat fallback:', e?.message);
-      hit = findBank(text);
-      reply = hit ? hit.a : 'سؤال جميل! أنا الآن أعمل بالوضع المحدود، فاختر من الأسئلة الجاهزة أمامك، أو جرّب «اختبر نفسك».';
+      // v34: لا يُخمَّن جواب جاهز بكلمة مفتاحية (كان قد يجيب على سؤال بجواب سؤال آخر)
+      reply = 'ما عندي معلومة مؤكدة الآن، لأن الاتصال ضعيف. اختر من الأسئلة الجاهزة أمامك، أو أعد سؤالك بعد قليل.';
     }
   }
   if (hit) {
@@ -1489,18 +1515,23 @@ async function startRecording() {
 
 let pendingQ = '', pendingN = 0, pendingT = null;
 /* علامات السؤال الناقص: ينتهي بنقاط، أو بحرف عطف أو جر أو أداة معلّقة */
-const DANGLING = /(?:\.{2,}|…)\s*$|(?:^|\s)(?:و|أو|او|ثم|بين|من|في|على|عن|الى|إلى|مع|وال|ال|بال|لل|وبين|ولا|لو|اذا|إذا|يعني|اللي|الذي|التي|لكن|بس)\s*$/;
+/* v34: أُخرجت «يعني» و«بس» و«اللي» (يختم بها الناس أسئلة كاملة: «وش الرشوة يعني») وكانت تؤخر الجواب 5 ثوانٍ */
+const DANGLING = /(?:\.{2,}|…)\s*$|(?:^|\s)(?:و|أو|او|ثم|بين|من|في|على|عن|الى|إلى|مع|وال|ال|بال|لل|وبين|ولا|لو|اذا|إذا|الذي|التي|لكن)\s*$/;
+const DANGLING_WAIT = 1800;                  // كم ينتظر نزيه تكملة السؤال الناقص (كان 5000)
 /* تحويل التسجيل إلى نص ثم سؤال نزيه. quiet=true في الاستماع التلقائي: يتجاهل ما لا يُفهم بدون رسالة خطأ */
 const STT_NOISE = ['اشتركوا في القناه', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching'];
+let sttBusy = false;
 async function processSpeech(blob, quiet, loudMs = 0) {
   setStatus('جاري تحويل كلامك لنص...'); setBusy(true);
   const my = session;
   startEarlyFill(quiet, loudMs);
+  sttBusy = true;
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/stt`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error);
     setBusy(false);
+    sttBusy = false;
     if (my !== session) { dropEarlyFill(); return; }
     T.mark('sttDone');
     const text = (data.text || '').trim(), n = norm(text);
@@ -1518,13 +1549,13 @@ async function processSpeech(blob, quiet, loudMs = 0) {
         if (autoMic?.recording || recState || busy) { pendingT = setTimeout(fire, 1500); return; }     // ما زال يتكلم: انتظر
         const q = pendingQ; pendingQ = ''; pendingN = 0; if (q) ask(q);
       };
-      pendingT = setTimeout(fire, 5000);
+      pendingT = setTimeout(fire, DANGLING_WAIT);
       return;
     }
     pendingQ = ''; pendingN = 0;
     ask(full);
   } catch (e) {
-    dropEarlyFill();
+    sttBusy = false; dropEarlyFill();
     if (my !== session) return;
     console.warn('stt:', e?.message); setBusy(false);
     setStatus(quiet ? CONFIG.idleStatus : 'تعذّر سماعك الآن — اختر من الأسئلة أو اكتب سؤالك 😊', quiet ? '' : 'err');
@@ -1574,7 +1605,9 @@ async function startAutoListen() {
     an.getByteTimeDomainData(buf);
     let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / buf.length);
-    if (CONFIG.bargeIn && (speakingNow || didTalking) && !recState && !document.hidden) {
+    // v34: المقاطعة تعمل أيضاً ونزيه «يفكر» (busy)، فيقدر الزائر يصحح سؤاله قبل أن يبدأ الجواب
+    //      (لا أثناء تحويل كلامه لنص: قد يكون ما زال يكمل جملته) ولا أثناء كلمة الافتتاح (أصوات القاعة لا تقطعها)
+    if (CONFIG.bargeIn && !speechMode && (speakingNow || didTalking || (busy && !sttBusy)) && !recState && !document.hidden) {
       // المقاطعة بالصوت: يلزم صوت قريب وواضح (أعلى بكثير من صوت نزيه المرتد من السماعة) لنصف ثانية متصلة تقريباً
       const loudB = rms > Math.max(0.10, noise * 5);
       if (!rec) { if (loudB) { barge = true; begin(now); } return; }
