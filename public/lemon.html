@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f4eee6">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+<title>نزيه | تجربة الأفتار الحي (LemonSlice)</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    background: #f4eee6; color: #1f2a24;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e3dccf;
+  }
+  header img { height: 56px; width: auto; object-fit: contain; }
+  header .ttl { text-align: center; flex: 1; }
+  header h1 { margin: 0; font-size: clamp(16px, 2.6vw, 26px); font-weight: 700; }
+  header p { margin: 2px 0 0; font-size: clamp(12px, 1.6vw, 15px); color: #5b6a60; }
+  main {
+    flex: 1; width: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; padding: 16px;
+  }
+  .hint { font-size: 15px; color: #5b6a60; text-align: center; margin: 0; }
+  .back { font-size: 14px; color: #1b6b45; text-decoration: none; }
+</style>
+</head>
+<body>
+  <header>
+    <img src="assets/uoh-logo.png" alt="جامعة حائل">
+    <div class="ttl">
+      <h1>اليوم العالمي لمكافحة الفساد</h1>
+      <p>9 ديسمبر · معاً .. لمجتمع نزيه وشفاف</p>
+    </div>
+    <img src="assets/nazaha-logo.jpg" alt="هيئة الرقابة ومكافحة الفساد - نزاهة">
+  </header>
+
+  <main>
+    <!-- أفتار LemonSlice الحي. لتغيير الشخصية بدّل قيمة agent-id فقط -->
+    <lemon-slice-widget
+      agent-id="agent_b36d37772d5d847d"
+      inline
+      initial-state="active"
+      custom-active-width="600"
+      custom-active-height="800"></lemon-slice-widget>
+
+    <p class="hint">اسمح للمتصفح باستخدام الميكروفون ثم تحدث مع نزيه</p>
+    <a class="back" href="./">العودة للصفحة الرئيسية</a>
+  </main>
+
+  <script type="module" src="https://unpkg.com/@lemonsliceai/lemon-slice-widget"></script>
+</body>
+</html>
