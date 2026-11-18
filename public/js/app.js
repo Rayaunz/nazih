@@ -56,7 +56,10 @@ const CONFIG = {
      للمقارنة على الشاشة بالإصدار الذي قبله (اتصال مباشر): ‎?simliv=3.1.0‎ ، وللرجوع: ‎?simliv=3.2.0‎ (يُحفظ في ذلك الجهاز).
      لا تستعمل 3.0.x: واجهتها مختلفة (close بدل stop) فلا يعمل معها الوجه الحي. */
   simliVersion: '3.2.0',
-  simliConnectWait: 9,         // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
+  livekitVersion: '2.24.1',    // مكتبة LiveKit للمتصفح (وضع lemon فقط): تعرض فيديو وجه LemonSlice
+  lemonConnectWait: 15,        // أقصى انتظار (ثوانٍ) لاتصال LemonSlice قبل أن يُنطق الجواب بصورة نزيه
+  lemonIdleSeconds: 120,       // تُقفل جلسة LemonSlice بعد هذا السكوت (لا تُحسب دقائق والشاشة واقفة)
+  simliConnectWait: 9,       // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
   greeting: 'يا هلا والله، حيّاك الله! أنا نزيه. وش بغيت تعرف عن النزاهة ومكافحة الفساد؟ اسألني، أو اختر من الأسئلة، أو قل: اختبرني.',
 };
 
@@ -916,7 +919,175 @@ function makeSimliAvatar(own) {
     stop() { const c = client; client = null; playEnd = 0; setLive(false); try { c?.stop(); } catch {} },
   };
 }
-if (OWN) window.DID_AGENTS_API = window.NAZIH_SIMLI ? makeSimliAvatar(makeOwnAvatar()) : makeOwnAvatar();
+/* ---------------- وجه LemonSlice الحي (‎/?avatar=lemon‎، للشاشة الرئيسية) ----------------
+   مثل Simli تماماً من جهة الموقع: نزيه يسمع ويفكر ويجهّز الصوت العربي بنفسه، وLemonSlice يحرّك الوجه فقط.
+   - الخادم يفتح الجلسة (‎/api/lemon-token‎) ويعطي الشاشة: عنوان WebSocket لإرسال الصوت، وتذكرة مشاهدة لغرفة LiveKit.
+   - صوت نزيه (PCM16 أحادي 16 كيلوهرتز من ‎/api/tts-pcm‎) يُرسل قطعاً صغيرة، وLemonSlice ينشر الفيديو والصوت المتزامن في الغرفة.
+   - يتصل عند أول لمسة أو كلام، ويُقفل بعد السكوت وعند شاشة الترحيب. وإذا تعذّر يكمل نزيه بصورته وصوته. */
+function makeLemonAvatar(own) {
+  const video = $('#simliVideo'), audio = $('#simliAudio'), box = $('#simliBox'), poster = $('#simliPoster'), wait = $('#simliWait');
+  const B = document.body.classList;
+  let room = null, ws = null, connecting = null, sdk = null, fails = 0, lastFail = 0, token = 0, talkT = null, idleT = null, beatT = null;
+  let playEnd = 0, via = 'own', sending = false;
+  const live = () => !!(room && ws && ws.readyState === 1);
+  const face = (state, why = '') => { window.NAZIH_FACE = { state, why }; };
+  const setLive = (v) => { B.toggle('simli-live', v); if (v) B.remove('simli-off'); };
+  const pkey = () => 'nazih.lposter.' + (innerHeight > innerWidth ? 'p' : 'l');
+  function setPoster(url) { if (!poster) return; if (!url) { poster.hidden = true; wait?.classList.remove('has-poster'); return; } poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
+  try { setPoster(localStorage.getItem(pkey())); } catch {}
+  function grabPoster(tries = 12) {
+    try {
+      const w = video.videoWidth, h = video.videoHeight;
+      if (w && h) {
+        const c = document.createElement('canvas'), k = Math.min(1, 720 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
+        const g = c.getContext('2d'); g.drawImage(video, 0, 0, c.width, c.height);
+        const px = g.getImageData(c.width >> 1, c.height >> 1, 1, 1).data;
+        if (px[0] + px[1] + px[2] > 60) { const url = c.toDataURL('image/jpeg', 0.82); setPoster(url); try { localStorage.setItem(pkey(), url); } catch {} return; }
+      }
+    } catch (e) { console.warn('poster:', e?.message); return; }
+    if (tries > 0 && room) setTimeout(() => grabPoster(tries - 1), 300);
+  }
+  const markShape = () => box?.classList.toggle('tall', video.videoHeight > video.videoWidth);
+  video.addEventListener('resize', markShape); video.addEventListener('loadedmetadata', markShape);
+  async function loadSdk() {
+    if (sdk) return sdk;
+    const v = CONFIG.livekitVersion;
+    for (const url of [`https://esm.sh/livekit-client@${v}`, `https://cdn.jsdelivr.net/npm/livekit-client@${v}/+esm`]) {
+      try { const m = await import(url); if (m.Room) return (sdk = m); } catch (e) { console.warn('LiveKit SDK:', url, e?.message); }
+    }
+    throw new Error('تعذّر تحميل مكتبة LiveKit');
+  }
+  const send = (o) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); } catch {} };
+  /* إقفال الجلسة: «terminate» ثم إغلاق الاتصال، وإلا تبقى الجلسة تُحسب حتى مهلة السكوت عندهم */
+  function close(why) {
+    const r = room, w = ws; room = null; ws = null; playEnd = 0; sending = false;
+    clearInterval(beatT); clearTimeout(idleT); clearTimeout(talkT); talkT = null;
+    try { if (w && w.readyState === 1) { w.send(JSON.stringify({ command: 'terminate' })); setTimeout(() => { try { w.close(); } catch {} }, 300); } else w?.close(); } catch {}
+    try { r?.disconnect(); } catch {}
+    setLive(false); face('idle');
+    if (why) console.log('LemonSlice:', why);
+  }
+  const armIdle = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (!didTalking && !speakingNow) close('أُقفلت الجلسة بعد السكوت'); else armIdle(); }, CONFIG.lemonIdleSeconds * 1000); };
+  function connect() {
+    if (live()) return Promise.resolve(true);
+    if (connecting) return connecting;
+    if (fails >= 3 && performance.now() - lastFail < 120000) return Promise.resolve(false);     // بعد ثلاث محاولات فاشلة: استراحة دقيقتين
+    B.add('simli-connecting'); face('connecting');
+    connecting = (async () => {
+      let r0 = null, w0 = null;
+      try {
+        const { Room, RoomEvent } = await loadSdk();
+        let code = ''; try { code = localStorage.getItem('nazih.code') || ''; } catch {}
+        const r = await fetch(`${CONFIG.apiBase}/api/lemon-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, screen: true }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ws || !d.token) throw new Error(d.error || 'token');
+        // 1) قناة الصوت إلى LemonSlice
+        w0 = new WebSocket(d.ws);
+        await Promise.race([new Promise((ok, bad) => { w0.onopen = ok; w0.onerror = () => bad(new Error('تعذّر فتح قناة الصوت')); }), sleep(10000).then(() => { throw new Error('انتهت مهلة قناة الصوت'); })]);
+        w0.onmessage = (ev) => {
+          let m = null; try { m = JSON.parse(ev.data); } catch { return; }
+          if (m?.command === 'playback_finished' && w0 === ws && !sending) {               // انتهى نطق الجواب عند الوجه
+            const my = token; clearTimeout(talkT); talkT = setTimeout(() => { if (my === token && !sending) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, 150);
+          }
+        };
+        w0.onclose = () => { if (ws === w0) close('انقطعت قناة الصوت'); };
+        // 2) غرفة LiveKit: فيديو الوجه وصوته المتزامن
+        r0 = new Room({ adaptiveStream: true });
+        let gotVideo = null; const firstFrame = new Promise((ok) => { gotVideo = ok; });
+        r0.on(RoomEvent.TrackSubscribed, (track) => {
+          if (track.kind === 'video') { track.attach(video); video.play?.().catch(() => {}); if (video.readyState >= 2) gotVideo(); else video.addEventListener('loadeddata', () => gotVideo(), { once: true }); }
+          else if (track.kind === 'audio') { track.attach(audio); audio.volume = settings.volume; }
+        });
+        r0.on(RoomEvent.Disconnected, () => { if (room === r0) close('انقطع البث'); });
+        await r0.connect(d.url, d.token);
+        // LemonSlice يحتاج ثوانٍ ليجهّز الوجه: ننتظر أول صورة قبل اعتباره متصلاً
+        await Promise.race([firstFrame, sleep(25000).then(() => { throw new Error('انتهت مهلة ظهور الوجه'); })]);
+        room = r0; ws = w0; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster(); face('live'); armIdle();
+        clearInterval(beatT); beatT = setInterval(() => send({ command: 'heartbeat', timestamp: Date.now() }), 15000);
+        if (window.NAZIH_SCREEN) setTimeout(warmAnswers, 5000);
+        if (DEBUG) { T.connect = 'lemon ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
+        return true;
+      } catch (e) {
+        try { if (w0 && w0.readyState === 1) w0.send(JSON.stringify({ command: 'terminate' })); w0?.close(); } catch {}
+        try { r0?.disconnect(); } catch {}
+        console.warn('LemonSlice connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false); B.add('simli-off');
+        face('off', String(e?.message || e));
+        if (DEBUG) { T.connect = 'lemon FAILED: ' + String(e?.message || e).slice(0, 60); T.show(); setStatus('LemonSlice: ' + (e?.message || e), 'err'); }
+        return false;
+      } finally { connecting = null; B.remove('simli-connecting'); }
+    })();
+    return connecting;
+  }
+  const pcmPending = new Map();
+  function pcmFetch(text) {
+    let p = pcmPending.get(text);
+    if (!p) {
+      p = fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, screen: SCREEN }) });
+      p.catch(() => {});
+      if (pcmPending.size > 12) pcmPending.delete(pcmPending.keys().next().value);
+      pcmPending.set(text, p);
+    }
+    return p;
+  }
+  /* قطعة صوت → base64 (الصيغة التي يطلبها LemonSlice) */
+  const b64 = (u) => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+  const CHUNK = 3200;                                  // 3200 بايت = 0.1 ثانية بتردد 16 كيلوهرتز (المستحسن عندهم 80–100 ملّي ثانية)
+  return {
+    own: true, simli: true, lemon: true,
+    events: own.events,
+    ensure: connect, preload() { loadSdk().catch(() => {}); },
+    prefetch(text) { if (live()) pcmFetch(text); return live(); },
+    functions: {
+      async speak({ input }) {
+        const my = ++token;
+        if (attractOn) return own.functions.speak({ input });                    // ترحيب الخمول بصورة نزيه وصوته: لا يفتح جلسة
+        const ok = live() ? true : await Promise.race([connect(), sleep(CONFIG.lemonConnectWait * 1000).then(() => false)]);
+        if (my !== token) return;
+        if (!ok || !live()) return own.functions.speak({ input });                // الاحتياطي: صورة نزيه وصوته
+        let r = null;
+        try { r = await pcmFetch(input); pcmPending.delete(input); } catch {}
+        if (my !== token) return;
+        if (!r || !r.ok || !r.body || !live()) return own.functions.speak({ input });
+        if (DEBUG) { T.voice = r.headers.get('x-tts') || ''; }
+        const reader = r.body.getReader(); let carry = new Uint8Array(0), total = 0, t0 = 0;
+        clearTimeout(talkT); talkT = null; clearTimeout(idleT); sending = true; via = 'lemon';
+        const out = (u) => {
+          send({ command: 'audio', audio: b64(u), sampleRate: 16000, encoding: 'PCM16' });
+          if (!total) { t0 = Math.max(performance.now(), playEnd); audio.volume = settings.volume; own.emit('TALKING'); }
+          total += u.length;
+        };
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (my !== token || !live()) { try { reader.cancel(); } catch {} if (my === token) { sending = false; via = 'own'; own.emit('IDLE'); } return; }
+            if (done) break;
+            const m = new Uint8Array(carry.length + value.length); m.set(carry); m.set(value, carry.length);
+            let i = 0; for (; i + CHUNK <= m.length; i += CHUNK) out(m.slice(i, i + CHUNK));
+            carry = m.slice(i);
+          }
+          if (carry.length >= 2) out(carry.slice(0, carry.length - (carry.length % 2)));
+        } catch (e) { console.warn('LemonSlice stream:', e?.message); }
+        sending = false;
+        if (!total) return own.functions.speak({ input });
+        playEnd = t0 + (total / 32000) * 1000;                                    // 32000 بايت = ثانية صوت
+        // احتياط إن لم تصل «playback_finished»: يُعتبر انتهى بعد مدة الصوت وهامش تأخّر الوجه
+        clearTimeout(talkT); talkT = setTimeout(() => { if (my === token) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, Math.max(500, playEnd - performance.now() + 5000));
+      },
+      /* المقطع التالي يُرسل قبل نهاية الحالي بقليل فيتصل الكلام عند الوجه بلا سكتة، ونهاية الجواب كله تُعلَن بـ audio_end (انظر flush) */
+      leadMs() { return via === 'lemon' && live() ? Math.max(0, playEnd - performance.now() - 450) : -1; },
+      flush() { if (via === 'lemon' && live()) send({ command: 'audio_end' }); },
+      interrupt() {
+        token++; sending = false; clearTimeout(talkT); talkT = null; playEnd = 0;
+        if (via === 'lemon') send({ command: 'interrupt' });
+        via = 'own'; own.functions.interrupt();
+        if (live()) armIdle();
+      },
+      toggleMicState() {}, reconnect: connect, connect,
+    },
+    stop() { close(''); },
+  };
+}
+if (OWN) window.DID_AGENTS_API = window.NAZIH_SIMLI ? (window.NAZIH_LEMON ? makeLemonAvatar(makeOwnAvatar()) : makeSimliAvatar(makeOwnAvatar())) : makeOwnAvatar();
 if (OWN && window.NAZIH_SIMLI) setTimeout(() => window.DID_AGENTS_API.preload(), 1200);   // مكتبة الوجه الحي تُحمَّل من فتح الصفحة (مجاناً) فيقصر الانتظار بعد اللمسة
 window.addEventListener('pagehide', () => { try { window.DID_AGENTS_API?.stop?.(); } catch {} });
 
@@ -967,7 +1138,7 @@ function makeSpeaker() {
         await (buf ? playBuffer(buf) : browserSpeak(text));
       }
     } catch (e) { console.warn('speak:', e); }
-    finally { if (live()) { speakingNow = false; lastSpokeAt = performance.now(); if (!did) setTalking(false); resetIdle(); } }
+    finally { if (live()) { speakingNow = false; lastSpokeAt = performance.now(); if (!did) setTalking(false); try { did?.functions?.flush?.(); } catch {} resetIdle(); } }   // flush: نهاية الجواب كله (وضع lemon فقط)
   })();
   const kick = () => { const w = wake; wake = null; if (w) w(); };
   return {

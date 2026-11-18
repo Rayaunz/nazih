@@ -1,0 +1,6 @@
+# الملفات السرية لا تُرفع أبداً (المستودع عام)
+.env
+.env.*
+!.env.example
+node_modules/
+*.log

@@ -628,6 +628,58 @@ async function handleSimliToken(req, res) {
   sendJSON(res, 200, { session_token: data.session_token });
 }
 
+// ---------- LemonSlice: وجه حي بديل للشاشة الرئيسية (الوضع ‎/?avatar=lemon‎) ----------
+/* LemonSlice يحرّك الوجه فقط على صوت نزيه: لا يسمع ولا يجاوب ولا يولّد صوتاً. العقل والصوت العربي كما هما.
+   الطريقة الموثقة عندهم (websocket-livekit): الخادم يفتح جلسة بمفتاح LemonSlice، والمتصفح يرسل صوت نزيه إلى LemonSlice عبر WebSocket،
+   وLemonSlice ينشر فيديو الوجه في «غرفة» على LiveKit Cloud، والشاشة تدخل الغرفة لتعرضه. لذلك يلزم حساب LiveKit أيضاً.
+   المتغيرات (في Render فقط، لا في الكود):
+     LEMONSLICE_API_KEY   مفتاح LemonSlice (سري)
+     LEMONSLICE_AGENT_ID  رقم الأفتار (الافتراضي agent_b36d37772d5d847d)
+     LIVEKIT_URL          عنوان مشروع LiveKit، مثل wss://xxxx.livekit.cloud
+     LIVEKIT_API_KEY و LIVEKIT_API_SECRET   من إعدادات مشروع LiveKit (السر سري)
+     LEMON_IDLE_SECONDS   (اختياري) تُقفل الجلسة بعد هذا السكوت، الافتراضي 120
+   رمز الشاشة: LEMON_CODE إن وُضع، وإلا SIMLI_CODE (نفس رابط ‎&code=‎). */
+const LEMON_KEY = process.env.LEMONSLICE_API_KEY || '';
+const LEMON_AGENT = process.env.LEMONSLICE_AGENT_ID || 'agent_b36d37772d5d847d';
+const LEMON_BASE = process.env.LEMONSLICE_BASE || 'https://lemonslice.com';
+const LEMON_IDLE = Number(process.env.LEMON_IDLE_SECONDS || 120);
+const LEMON_CODE = process.env.LEMON_CODE || SIMLI_CODE;
+const LK_URL = (process.env.LIVEKIT_URL || '').trim(), LK_KEY = process.env.LIVEKIT_API_KEY || '', LK_SECRET = process.env.LIVEKIT_API_SECRET || '';
+const LEMON_READY = !!(LEMON_KEY && LK_URL && LK_KEY && LK_SECRET);
+/* تذكرة دخول غرفة LiveKit (JWT موقّع بسر المشروع) بدون أي مكتبة. الصلاحيات تُكتب كلها صراحة: ما يُترك يُمنح افتراضياً */
+const b64url = (x) => Buffer.from(x).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+function livekitToken(identity, room, publish, ttl = 7200) {
+  const now = Math.floor(Date.now() / 1000);
+  const head = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const body = b64url(JSON.stringify({ iss: LK_KEY, sub: identity, nbf: now - 10, exp: now + ttl,
+    video: { room, roomJoin: true, canPublish: publish, canPublishData: publish, canSubscribe: true, roomCreate: false, roomAdmin: false, roomList: false, roomRecord: false } }));
+  const sig = crypto.createHmac('sha256', LK_SECRET).update(`${head}.${body}`).digest('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return `${head}.${body}.${sig}`;
+}
+async function handleLemonToken(req, res) {
+  if (!LEMON_READY) return sendJSON(res, 503, { error: 'LemonSlice غير مضبوط: أضف LEMONSLICE_API_KEY و LIVEKIT_URL و LIVEKIT_API_KEY و LIVEKIT_API_SECRET في Environment' });
+  const body = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}');
+  if (LEMON_CODE && body.code !== LEMON_CODE) return sendJSON(res, 403, { error: 'رمز الشاشة غير صحيح' });
+  const room = 'nazih-' + crypto.randomBytes(6).toString('hex');
+  const r = await fetch(`${LEMON_BASE}/api/liveai/sessions`, {
+    method: 'POST',
+    headers: { 'X-API-Key': LEMON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      transport_type: 'websocket-livekit', agent_id: LEMON_AGENT, audio_sample_rate: 16000, idle_timeout: LEMON_IDLE, response_done_timeout: 2,
+      livekit_properties: { livekit_url: LK_URL, livekit_token: livekitToken('lemonslice-avatar', room, true) },
+    }),
+    signal: withTimeout(25_000),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.websocket_address) {
+    const why = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data.error || data).slice(0, 300);
+    console.warn('LemonSlice session:', r.status, why);
+    return sendJSON(res, 502, { error: why || 'LemonSlice error' });
+  }
+  console.log(`LemonSlice: جلسة جديدة ${data.session_id || ''} في الغرفة ${room}`);
+  sendJSON(res, 200, { ws: data.websocket_address, url: LK_URL, token: livekitToken('screen-' + crypto.randomBytes(4).toString('hex'), room, false), session: data.session_id || '' });
+}
+
 // ---------- الملفات الثابتة ----------
 const zlib = require('zlib');
 const GZ_CACHE = new Map();                       // ضغط الملفات النصية مرة واحدة ثم حفظها في الذاكرة
@@ -778,6 +830,7 @@ http.createServer(async (req, res) => {
       if (req.url.startsWith('/api/tts')) return await handleTTS(req, res);
       if (req.url.startsWith('/api/stt')) return await handleSTT(req, res);
       if (req.url.startsWith('/api/simli-token')) return await handleSimliToken(req, res);
+      if (req.url.startsWith('/api/lemon-token')) return await handleLemonToken(req, res);
       return sendJSON(res, 404, { error: 'not found' });
     }
     if (/^\/stats\/?(\?.*)?$/.test(req.url)) req.url = '/stats.html';      // لوحة الإحصائيات: ‎/stats‎
@@ -795,6 +848,7 @@ http.createServer(async (req, res) => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
   if (SIMLI_PHONES) console.log(`✅ الوجه الحي مفعّل للجوالات أيضاً (تُقفل الجلسة بعد ${SIMLI_PHONE_IDLE} ثانية سكوت، وأقصاها ${SIMLI_PHONE_MAX} ثانية)`);
   console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
+  console.log(LEMON_READY ? `✅ LemonSlice مضبوط (الوجه الحي للشاشة: /?avatar=lemon، الأفتار ${LEMON_AGENT})` : `ℹ️  LemonSlice غير مفعّل${LEMON_KEY || LK_URL ? ' — ينقص: ' + [!LEMON_KEY && 'LEMONSLICE_API_KEY', !LK_URL && 'LIVEKIT_URL', !LK_KEY && 'LIVEKIT_API_KEY', !LK_SECRET && 'LIVEKIT_API_SECRET'].filter(Boolean).join('، ') : ''}`);
   console.log(`🔊 الصوت: ${TTS_PROVIDER}${TTS_PROVIDER === 'azure' ? ` (${AZ_VOICE} @ ${AZ_REGION})` : TTS_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ` (${TTS_VOICE})`}`);
   if (SCREEN_PROVIDER !== TTS_PROVIDER) console.log(`🔊 صوت الشاشة الرئيسية: ${SCREEN_PROVIDER}${SCREEN_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ''}`);
   console.log(`🧠 العقل: ${CHAT_PROVIDERS.map((p) => p.model).join(' ← احتياطي: ')}`);
