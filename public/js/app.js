@@ -2,6 +2,58 @@
  *  نزيه — شاشة واحدة تفاعلية لليوم العالمي لمكافحة الفساد
  *  الإعدادات وبنك الأسئلة في أعلى الملف
  * ========================================================= */
+
+/* =========================================================
+ *  v39 — تنزيل الأجوبة على جامعة حائل (طلب الدكتور المشرف). هذا الجدول للمراجعة والتعديل.
+ *  القاعدة الأولى كما هي: لا حكم نظامي إلا من النص. التنزيل يغيّر المسمى فقط، في جواب نزيه ونطقه،
+ *  ولا يغيّر نصوص الأنظمة في law-data.js، ولا يضيف حكماً ليس في النص.
+ *  إذا طلب الزائر نص مادة حرفياً: تُقرأ كما هي بلا تبديل، ثم يُضاف التوضيح بعدها.
+ *  عند التعديل: غيّر النصوص بين علامتي التنصيص فقط، واترك الفواصل والأقواس كما هي.
+ * ========================================================= */
+const UOH_TERMS = {
+  /* 1) مسمى تغيّر: يُبدَّل في كل جواب ونطقه، سواء كان السؤال عن الجامعة أو لا.
+        «مدير الجامعة» ورد 39 مرة: لائحة أعضاء هيئة التدريس (31 مرة)، ولائحة توظيف غير السعوديين في الجامعات (8 مرات).
+        ويشمل التبديل صيغه: «لمدير الجامعة» ← «لرئيس الجامعة»، «نائب مدير الجامعة» ← «نائب رئيس الجامعة». */
+  renamed: [
+    ['مدير الجامعة', 'رئيس الجامعة'],
+    ['مدير جامعة', 'رئيس جامعة'],
+    ['مديري الجامعات', 'رؤساء الجامعات'],
+    ['مديرو الجامعات', 'رؤساء الجامعات'],
+  ],
+  // يُقال بعد قراءة نص مادة حرفياً فيها «مدير الجامعة»
+  renamedNote: 'والمقصود بمدير الجامعة في هذا النص: رئيس الجامعة، لأن المسمى تغيّر.',
+
+  /* 2) «الوزير» ← «رئيس جامعة حائل»: في سؤال يخص الجامعة فقط، وفي اللوائح التالية فقط، لأنها تعرّف الوزير بأنه الوزير أو رئيس الجهة المستقلة.
+        لا يُبدَّل «وزير» مضافة إلى وزارة («وزير الموارد البشرية»)، ولا «مجلس الوزراء»، ولا الجملة التي تنقل التعريف نفسه،
+        ولا «الوزير» في الأنظمة الأخرى. والتوضيح (note) يُقال مرة واحدة في آخر الجواب. */
+  ministerTitle: 'رئيس جامعة حائل',
+  minister: {
+    // نظام الانضباط الوظيفي، المادة الأولى: «الوزير: الوزير المختص بشؤون وزارته، أو رئيس الجهة المستقلة، بحسب الأحوال.»
+    'discipline': { term: 'الوزير', note: 'والمقصود هنا رئيس الجامعة، لأن اللائحة تعرّف الوزير بأنه رئيس الجهة المستقلة.' },
+    // لائحته التنفيذية، المادة 1: تحيل إلى تعريفات المادة الأولى من النظام
+    'discipline-reg': { term: 'الوزير', note: 'والمقصود هنا رئيس الجامعة، لأن اللائحة تعرّف الوزير بأنه رئيس الجهة المستقلة.' },
+    // اللائحة التنفيذية للموارد البشرية، المادة 1: «الوزير المختص: الوزير المختص بشؤون وزارته، أو رئيس المصلحة المستقلة، بحسب الأحوال.»
+    // (اللفظ فيها «الوزير المختص»، والتعريف «رئيس المصلحة المستقلة» لا «الجهة»، فالتوضيح بلفظها)
+    'hr-reg': { term: 'الوزير المختص', note: 'والمقصود هنا رئيس الجامعة، لأن اللائحة تعرّف الوزير المختص بأنه رئيس المصلحة المستقلة.' },
+    // لائحة أعضاء هيئة التدريس: ليس فيها تعريف للوزير، فلا يُبدَّل فيها (صاحب الصلاحية فيها «مدير الجامعة»، وهو في البند 1)
+  },
+  noteOnEveryVerbatim: false,   // true: توضيح «الوزير» يُضاف بعد قراءة أي مادة منها حرفياً، ولو لم يذكر الزائر الجامعة
+
+  /* 3) أسئلة جامعة حائل: من ذكر الجامعة مع موظف أو عضو هيئة تدريس تُختار له لوائحه تلقائياً، ويُجاب بصيغة تخص الجامعة
+        («في جامعة حائل، يوقع العقوبة رئيس الجامعة...»). الكلمات تُطابَق مع «و، ف، ب، ل، ال» قبلها */
+  uniWords: ['جامعة حائل', 'جامعة حايل', 'الجامعة', 'جامعتنا', 'جامعتكم'],
+  // «الجامعة» تليها إحدى هذه الكلمات: جامعة أخرى، لا جامعة حائل (إلا إذا ذُكرت «جامعة حائل» في السؤال أيضاً)
+  otherUniWords: ['الإسلامية', 'الأمريكية', 'العربية', 'السعودية', 'الأردنية', 'البريطانية', 'المصرية', 'اللبنانية', 'الكندية', 'الأسترالية', 'الإلكترونية', 'الأهلية', 'الخاصة',
+    'الملك', 'الإمام', 'الأمير', 'الأميرة', 'أم القرى', 'طيبة', 'القصيم', 'تبوك', 'جازان', 'نجران', 'الجوف', 'الباحة', 'بيشة', 'شقراء', 'المجمعة', 'الطائف', 'جدة', 'الحدود الشمالية', 'حفر الباطن'],
+  employeeWords: ['موظف', 'موظفة', 'موظفين', 'موظفي', 'موظفو', 'موظفات', 'الإداريين', 'الإداريات'],
+  facultyWords: ['عضو هيئة التدريس', 'أعضاء هيئة التدريس', 'عضو هيئة تدريس', 'هيئة التدريس', 'دكتور', 'دكتورة', 'دكاترة', 'أستاذ', 'أستاذة', 'أساتذة',
+    'المحاضر', 'المحاضرة', 'المحاضرين', 'معيد', 'معيدة', 'معيدين', 'معيدات'],
+  // السؤال عن شخص آخر غير الموظف وعضو هيئة التدريس: إذا ذُكر أحد هؤلاء قبلهما («طالب في الجامعة والدكتور شافه يغش»)، فلا تُختار لوائح المنسوبين
+  actorWords: ['طالب', 'طالبة', 'طلاب', 'طالبات', 'مراجع', 'مراجعة', 'مراجعين', 'شركة', 'مقاول', 'زائر', 'مواطن', 'ولي أمر', 'ولي الأمر'],
+  employeeLaws: ['discipline', 'discipline-reg', 'hr-reg'],   // نظام الانضباط الوظيفي ولائحته التنفيذية، واللائحة التنفيذية للموارد البشرية
+  facultyLaws: ['faculty'],                                   // اللائحة المنظمة لشؤون منسوبي الجامعات السعوديين من أعضاء هيئة التدريس
+};
+
 const CONFIG = {
   apiBase: '',                 // اتركه فارغاً إذا كان الموقع والخادم على نفس الدومين
   avatarImage: 'assets/avatar.jpg',
@@ -1413,7 +1465,8 @@ function makeSpeaker() {
   })();
   const kick = () => { const w = wake; wake = null; if (w) w(); };
   return {
-    push(t) { t = (t || '').trim(); if (!t) return; noteSaid(t); q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2 && !did?.prefetch?.(t, my)) tts(t); kick(); },
+    // v39: مقطع بلا حروف ولا أرقام (مثل علامة إغلاق الاقتباس وحدها) لا يُرسل للنطق
+    push(t) { t = (t || '').trim(); if (!t || !/[\p{L}\p{N}]/u.test(t)) return; noteSaid(t); q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2 && !did?.prefetch?.(t, my)) tts(t); kick(); },
     end() { done = true; kick(); return run; },
   };
 }
@@ -1582,13 +1635,28 @@ function wordNum(w) {
   const hit = NUM_WORDS.find(([k]) => w.startsWith(k));
   return hit ? hit[1] : null;
 }
+/* v39: المواد فوق المئة: «الخامسة بعد المائة» و«الخامسة والمائة» و«المائة والخامسة» و«مئة وخمسة» = 105، «المائة» = 100،
+   «التاسعة بعد المائتين» = 209. كانت تُقرأ 5 و9 (فيُقرأ نص مادة غير المطلوبة). «مئة ألف ريال» مبلغٌ لا رقم مادة.
+   (server.js يقرأ الأرقام بالطريقة نفسها: artNum) */
+const HUNDREDS = (w) => (/^(?:ال)?(?:مئه|مائه|ميه)$/.test(w || '') ? 100 : /^(?:ال)?(?:مئت|مائت|ميت)(?:ين|ان|ا)$/.test(w || '') ? 200 : 0);
+const AMOUNT_AFTER = /^(?:ال)?(?:الف|الاف|الفا|مليون|ملايين|مليار|مليارات|ريال|ريالا|ريالات|بالمئه|بالمائه|بالميه|يوم|يوما|ايام|اسبوع|اسبوعا|اسابيع|سنه|سنوات|سنين|عام|عاما|اعوام|شهر|شهرا|اشهر|شهور|ساعه|ساعات|درجه|كيلو|مره|مرات)$/;
 function articleNumber(str) {                 // من نص بعد كلمة «المادة»
-  const toks = norm(str).replace(/[()«»"':،.؟?]/g, ' ').trim().split(/\s+/).slice(0, 3);
+  const toks = norm(str).replace(/[^ء-ي0-9٠-٩\s]/g, ' ').trim().split(/\s+/).slice(0, 7);
+  let i = 0; const base = HUNDREDS(toks[0]); if (base) i = 1;
   let total = 0, got = false;
-  for (const tk of toks) { const v = wordNum(tk); if (v === null) break; total += v; got = true; if (/^[0-9٠-٩]+$/.test(tk)) break; }
-  return got ? total : null;
+  for (const s = i; i < toks.length && i < s + 3; i++) { const v = wordNum(toks[i]); if (v === null) break; total += v; got = true; if (/^[0-9٠-٩]+$/.test(toks[i])) return base ? null : total; }
+  if (base) {                                   // «مية» وحدها أو «مية من مية»: درجةٌ أو كمية («المادة مية» = درجة المقرر)، لا رقم مادة
+    if (AMOUNT_AFTER.test(toks[i] || '')) return null;
+    if (!got && (!/^ال/.test(toks[0]) || (toks[i] === 'من' && (HUNDREDS(toks[i + 1]) || /^[0-9٠-٩]+$/.test(toks[i + 1] || ''))))) return null;
+    return base + total;
+  }
+  if (!got) return null;
+  if (toks[i] === 'بعد' && HUNDREDS(toks[i + 1])) return total + HUNDREDS(toks[i + 1]);
+  if (/^و/.test(toks[i] || '') && HUNDREDS(toks[i].slice(1))) return total + HUNDREDS(toks[i].slice(1));
+  return total;
 }
 function lookupArticle(text) {
+  lookupArticle.last = null;                  // v39: المادة التي قُرئت حرفياً (لتوضيح جامعة حائل بعدها، uohVerbatimNote)
   const n = norm(text), m = n.match(/(?:الماده|ماده)\s+(.{1,40})/);
   if (!m) return null;
   const num = articleNumber(m[1]); if (!num) return null;
@@ -1598,6 +1666,7 @@ function lookupArticle(text) {
   lastLawId = lawId;
   const art = law.articles.find((a) => !/مكرر/.test(a.title) && articleNumber(a.title.replace(/^.*?ماده\s*|^المادة\s*/, '')) === num);
   if (!art) return `لم أجد المادة رقم ${num} في ${law.name}، وعدد مواده ${law.articles.filter((a) => !/مكرر|ملحق/.test(a.title)).length}.`;
+  lookupArticle.last = { law, art };
   return `${art.title} من ${law.name}: ${art.body}`;
 }
 /* اختيار ما يُرسل مع السؤال إلى الذكاء الاصطناعي.
@@ -1679,6 +1748,34 @@ const NEPO_CUE = new RegExp(HIRE_CUE.source + '|وظيف|ترقي|يرقي|رق�
 const CORRUPT_CUE = /المال العام|(?:فلوس|اموال) (?:ال)?(?:دول|حكوم|عام|جه)|اختلس|لهط|سرق|فساد|رشو|رشا|رتشي|راشي|متهم/;
 const ATTEMPT_CUE = /زور|تزوير|رشو|راشي|غسل|اختلس|سرق|(?:^|\s)(?:ال|بال)?صك|مستند|وثيق|محرر|ختم/;
 const MISUSE_CUE = /لمصلحت|شخصي|خاص|مشاوير|لبيت|للبيت|ياخذ|اخذ|يستخدم|استخدم|يستعمل|استعمل|لنفسه|لاهله|يبيع|باع|سرق|يختلس|اختلس|يودي|يشيل/;
+/* v39: «توقيع العقوبة» و«العقوبات التي توقع على الموظف» و«من يوقع الجزاء» = إيقاع جزاء، لا توقيع ورقة. تُحذف هذه العبارات قبل فحص
+   معنى التزوير (كانت أسئلة الدكتور عن عقوبات موظف الجامعة تجلب مواد نظام التزوير). وتبقى تزويراً: «وقّع عني في الحضور»،
+   و«عقوبة من يوقع على ورقة باسم غيره»، و«وقّع على العقوبة بدل المدير». لا يُحذف شيء إلا إذا كان في السؤال «عقوبة» أو «جزاء» */
+const IMPOSE_PHRASE = new RegExp([
+  // «توقيع العقوبة»، «من يوقع الجزاء»، «يوقع عليه جزاء» (لا «وقّع على العقوبة بدل المدير»)
+  '(?:توقيع|ايقاع|يوقع|توقع|يوقعها|توقعها|يوقعون|وقع)\\s+(?:\\S+\\s+)?(?:ال)?(?:عقوب|جزاء)\\S*(?=\\s|$)(?!\\s+(?:بدل|بدال|عن|باسم|مكان))',
+  // «العقوبات (التي) توقع على الموظف/عضو هيئة التدريس/عليه» أو في آخر الجملة، لا «عقوبة من يوقع على ورقة»
+  '(?:عقوب|جزاء)\\S*\\s+(?:(?:التي|اللي|الي|الذي)\\s+)?(?:توقع|يوقع|توقعها|يوقعها|تقع)(?=\\s+(?:ال)?(?:جه[هت]|جامع|اداره|وزار|رئيس|مدير|لجن)|\\s+علي(?:ه|ها|هم)?\\s+(?:ال)?(?:موظف|عضو|اعضاء|منسوب|مخالف|دكتور|استاذ|معيد|محاضر|متعاقد)|\\s+علي(?:ه|ها|هم)(?=\\s|$)|\\s*[؟?.،]|\\s*$)',
+  // «واللي توقع على عضو هيئة التدريس» (الشق الثاني من سؤال يقارن)
+  '(?:^|\\s)و?(?:اللي|التي|الذي|الذين|الي)\\s+(?:توقع|يوقع|تقع)(?=\\s+علي(?:ه|ها|هم)?\\s+(?:ال)?(?:موظف|عضو|اعضاء|منسوب|مخالف|دكتور|استاذ|معيد|محاضر|متعاقد))',
+].join('|'), 'g');
+const FORGERY_RE = /زور|تزوير|مزور|توقيع|وقع(?:ت)? علي|اوقع|محضر|ختم|خاتم|وثيق[هت]|مستند|تقليد|تحريف|تقرير طبي|عذر طبي|سكليف|حضور وانصراف|بصم|مضروب|مزيف|مفبرك/;
+/* v39: سؤال عن موظف أو عضو هيئة تدريس في جامعة حائل (UOH_TERMS): معانٍ تثبّت مواد لائحته. تُضاف في retrieveContext بحسب الفئة
+   (uohInfo)، لا من خريطة المعاني العامة. disc: في موضوع تأديبي فقط. الأخص أولاً: الصلاحية، ثم العقوبات، ثم التحقيق */
+const UOH_PEN = /عقوب|جزا[ءؤئه]|عاقب|عوقب|عقاب|يجازي|(?:^|\s)[يت]?فصل|انذار|(?:^|\s)(?:ال)?لوم|حسم|يصير (?:له|لها|لهم|عليه)|يسوون (?:فيه|فيها|معه)/;
+const UOH_AUTH = /صلاحي|(?:من|مين) (?:يوقع|يعاقب|يصدر|يقرر|يعتمد|يملك|يفصل|يحاسب)|(?:توقيع|ايقاع|اعتماد) (?:ال)?(?:عقوب|جزاء)/;
+const UOH_INV = /تحقيق|يحقق|مساءل|استجواب|محضر|محاكم|ايقاف|(?:^|\s)[يت]وقف|موقوف|كف (?:ال)?يد/;
+const UOH_CONCEPTS = [
+  { id: 'uoh-emp-auth', role: 'emp', disc: true, prio: 97, re: UOH_AUTH, laws: [], pins: { discipline: [10, 22, 11], 'discipline-reg': [16] }, terms: ['صلاحيات'] },
+  { id: 'uoh-emp-pen', role: 'emp', disc: true, prio: 96, re: UOH_PEN, laws: [], pins: { discipline: [6, 4] }, terms: ['جزاء'] },
+  { id: 'uoh-emp-inv', role: 'emp', disc: true, prio: 95, re: UOH_INV, laws: [], pins: { discipline: [4, 17], 'discipline-reg': [2, 5, 7, 8, 14] }, terms: ['تحقيق'] },
+  { id: 'uoh-emp-foreign', role: 'emp', disc: true, foreign: true, prio: 94, re: /./, laws: [], pins: { 'non-saudi-staff': [44, 48] }, terms: [] },     // المتعاقد: «يخضع لأحكام تأديب السعوديين في الجامعة»
+  { id: 'uoh-fac-foreign', role: 'fac', disc: true, foreign: true, prio: 94, re: /./, laws: [], pins: { 'non-saudi-staff': [44, 48] }, terms: [] },
+  { id: 'uoh-fac-auth', role: 'fac', disc: true, prio: 97, re: UOH_AUTH, laws: [], pins: { faculty: [91, 88, 82] }, terms: [] },
+  { id: 'uoh-fac-pen', role: 'fac', disc: true, prio: 96, re: UOH_PEN, laws: [], pins: { faculty: [89, 91, 88] }, terms: [] },
+  { id: 'uoh-fac-inv', role: 'fac', disc: true, prio: 95, re: UOH_INV, laws: [], pins: { faculty: [83, 84, 85, 86, 87, 88] }, terms: [] },
+  { id: 'uoh-fac-hours', role: 'fac', disc: false, prio: 60, re: /ساعات|دوام|نصاب|اوقات (?:ال)?عمل/, laws: [], pins: { faculty: [41] }, terms: [] },
+];
 const CONCEPTS = [
   // v36: معانٍ أخص (تسبق العامة)
   { id: 'self-report', prio: 90, re: /(?:^|\s)(?:و|ف)?[يتان]?ندم(?:ت|نا|وا|ان)?(?=\s|$)|(?:^|\s)تبت(?=\s|$)|اعترف|سلم(?:ت)? نفس|(?:بلغ|ابلغ|اخبر)\S* عن نفس|قبل (?:لا |ما )?(?:يكشف|يكتشف|ينكشف|تنكشف|يعرف|يدر|يمسك|احد يدر)|قبل (?:ال)?اكتشاف/, also: BRIBE_CUE, laws: [], pins: { bribery: [16] }, terms: ['اخبر', 'اكتشاف', 'اعفاء'] },
@@ -1709,7 +1806,7 @@ const CONCEPTS = [
   { id: 'wealth-salary', prio: 50, re: /راتب(?:ه)? (?:على قده|ما يكفي|ما يجيب|بسيط)/, also: /عماير|عمارات|ثرو|املاك|فلل|قصور|سيارات|ملايين|اراضي|غني/, laws: ['nazaha'], pins: { nazaha: [19] }, terms: ['ثروه'] },
   { id: 'attempt', prio: 45, re: /شروع|شرع في|حاول|محاول[هت]|ما (?:كمل|تم|نجح)/, laws: [], pins: { forgery: [20], bribery: [9], aml: [2], protect: [29] }, terms: [] },
   { id: 'attempt-caught', prio: 45, re: /ما (?:قدر يكمل|لحق)|قبل (?:ان |لا |ما )?(?:يكمل|يخلص|يتم|ينهي)|انمسك|قبض عليه|مسكوه/, also: ATTEMPT_CUE, laws: [], pins: { forgery: [20], bribery: [9], aml: [2], protect: [29] }, terms: [] },
-  { id: 'forgery', prio: 40, re: /زور|تزوير|مزور|توقيع|وقع(?:ت)? علي|اوقع|محضر|ختم|خاتم|وثيق[هت]|مستند|تقليد|تحريف|تقرير طبي|عذر طبي|سكليف|حضور وانصراف|بصم|مضروب|مزيف|مفبرك/, laws: ['forgery'], pins: { forgery: [1, 8, 9, 12, 19, 25] }, terms: ['زور', 'محرر'] },
+  { id: 'forgery', prio: 40, re: { test: (n) => FORGERY_RE.test(/عقوب|جزا[ءؤئ]/.test(n) ? n.replace(IMPOSE_PHRASE, ' ') : n) }, laws: ['forgery'], pins: { forgery: [1, 8, 9, 12, 19, 25] }, terms: ['زور', 'محرر'] },     // v39: بلا «إيقاع العقوبة» (IMPOSE_PHRASE)
   { id: 'grievance', prio: 40, re: /تظلم|ديوان المظالم|(?:محكم[هت]|محاكم) (?:ال)?(?:اداري|استئناف)|قضاء (?:ال)?اداري|قرار(?:ات)? (?:ال)?اداري|الغاء (?:ال)?قرار|(?:اعترض|اعتراض|اطعن|طعن) (?:علي|في) (?:ال)?(?:قرار|حكم)|(?:^| )[ابلن]?رفعت? (?:ال)?(?:دعوي|قضي[هت])(?! (?:ال)?(?:جزائي|جنائي|عام))|دعوي (?:ال)?(?:اداري|تاديبي|تعويض|الغاء)|تعويض (?:عن (?:ال)?قرار|من (?:ال)?(?:جه[هت]|دوله|حكومه|وزاره|جامعه))|يوقف (?:ال)?تنفيذ|وقف (?:ال)?تنفيذ|استئناف|استانف|اعاد[هت] النظر/, laws: ['bog-proc', 'bog'], pins: { bog: [13], 'bog-proc': [5, 8, 9, 33] }, terms: ['تظلم', 'دعوي'] },
   { id: 'corruption', re: /فساد|فاسد/, laws: ['nazaha'], pins: { nazaha: [2, 4, 18] }, terms: ['جرائم فساد'] },
   { id: 'nazaha', re: /نزاه[هت]|هيئ[هت] (?:ال)?رقاب/, laws: ['nazaha'], pins: { nazaha: [3, 4] }, terms: [] },
@@ -1788,32 +1885,299 @@ function analyze(n) {                        // ماذا يطلب هذا الن�
 /* سؤال تابع لما قبله؟ قصير أو فيه إحالة («تأكد»، «وش عقوبتها»، «طيب والوسيط؟») */
 // v36: كلمة الإحالة («عقوبته»، «عليه») تجعل السؤال تابعاً فقط إذا لم يكن له معنى خاص به وكان قصيراً؛ «هل الموظف اللي ياخذ هدية يعاقب عليه؟» سؤال مستقل
 const isFollowUp = (n, an) => !an.lawIds.length && (an.base.length <= 2 || n.length <= 18 || (FOLLOW_RE.test(n) && !an.concepts.length && an.base.length <= 4) || (/^(?:طيب|زين|و|ف)\s*و/.test(n) && an.base.length <= 4));
+/* ---------------- v39: جامعة حائل (الجدول UOH_TERMS أعلى الملف) ----------------
+   1) uohInfo: هل السؤال عن الجامعة، وعن موظف أم عضو هيئة تدريس، وأي اللوائح له.
+   2) uohFix: تبديل المسمى في جواب نزيه قبل عرضه ونطقه (النصوص الأصلية لا تتغير).
+   3) uohNote / uohVerbatimNote: التوضيح مرة واحدة في آخر الجواب، وبعد قراءة نص مادة حرفياً. */
+let UOH_W = null, UOH_R = null, uohMemo = [null, null], lastUoh = { uni: false, laws: [], min: false, minArts: new Map() };
+const uohEsc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function uohWords() {        // كلمات الجدول بعد التوحيد. الكلمة المكتوبة بـ«ال» («الجامعة») لا تطابق إلا معرّفة: «جامعة وهمية» ليست جامعة حائل
+  if (UOH_W) return UOH_W;
+  const mk = (ws) => { const bare = new Set(), def = new Set(), multi = []; for (const w of ws || []) { const x = norm(w).trim(); if (/\s/.test(x)) multi.push(x); else if (/^ال(?=..)/.test(x)) def.add(x.slice(2)); else bare.add(x); } return { bare, def, multi }; };
+  const ou = (UOH_TERMS.otherUniWords || []).map((w) => norm(w).trim()).filter(Boolean);
+  return (UOH_W = { uni: mk(UOH_TERMS.uniWords), emp: mk(UOH_TERMS.employeeWords), fac: mk(UOH_TERMS.facultyWords), actor: mk(UOH_TERMS.actorWords),
+    otherUni: ou.length ? new RegExp(`(?:^|\\s)[وف]?(?:بال|لل|ال)جامعه\\s+(?:${ou.map(uohEsc).join('|')})(?=\\s|$)`) : null });
+}
+function uohTok(t, set) {    // «للموظف» = موظف، «بالجامعة» = الجامعة
+  if (set.bare.has(t)) return true;
+  const m = /^([وف]?)(لل|بال|كال|ال|[بلك])?(.+)$/.exec(t); if (!m) return false;
+  return set.bare.has(m[3]) || (/ال|لل/.test(m[2] || '') && set.def.has(m[3]));
+}
+function uohPos(n, set, skip) {   // موضع أول كلمة من الجدول في السؤال، أو -1
+  let best = -1;
+  for (const p of set.multi) { const i = n.indexOf(p); if (i >= 0 && (best < 0 || i < best)) best = i; }
+  const re = /[ء-ي]+/g; let m;
+  while ((m = re.exec(n)) && (best < 0 || m.index < best)) if (uohTok(m[0], set) && !(skip && skip(m[0]))) { best = m.index; break; }
+  return best;
+}
+const uohHas = (n, set) => uohPos(n, set) >= 0;
+// موضوع تأديبي (العقوبات، الجزاءات، التحقيق، صاحب الصلاحية): فيه وحده تُختار لوائح الفئة وتُستبعد لوائح الفئة الأخرى. غيره (إجازة، ابتعاث...) كما كان
+const UOH_DISC = /عقوب|جزا[ءؤئه]|عاقب|عوقب|عقاب|يجازي|مخالف|تاديب|صلاحي|تحقيق|يحقق|مساءل|محاكم|ايقاف|(?:^|\s)[يت]وقف|موقوف|كف (?:ال)?يد|انذار|(?:^|\s)(?:ال)?لوم|فصل|حسم|يصير (?:له|لها|لهم|عليه)|يسوون (?:فيه|فيها|معه)|يحاسب|محاسب|غياب|(?:^|\s)(?:غاب|تغيب|يغيب|انقطع)/;
+const UOH_FOREIGN = /غير (?:ال)?سعودي|متعاقد|اجنبي|وافد|(?:^|\s)(?:ال)?(?:مصري|سوداني|اردني|هندي|باكستاني|يمني|سوري|فلبيني|بنغالي|بنقالي|بنغلاديشي|تونسي|مغربي|جزائري|عراقي|لبناني|فلسطيني|اثيوبي|نيبالي|اندونيسي|تركي|افغاني|سيرلانكي|اريتري|صومالي|تشادي|نيجيري|كيني|امريكي|بريطاني|كندي|استرالي)(?:ه|ين|ون)?(?=\s|$)/;
+const UOH_SCHOOL = /مدرس[هة]|ثانوي|متوسط|ابتدائي|روض[هة]/;
+// «الدكتور» طبيبٌ لا عضو هيئة تدريس: «من/عند الدكتور»، أو قرب المستشفى والعيادة (ما لم يُقل «دكتور في الجامعة/الكلية»)
+const UOH_PHYS = /(?:من|عند)\s+(?:ال)?دكتور|دكتور\S*\s+(?:\S+\s+){0,3}(?:ال)?(?:مستشف|عياد|مستوصف|اسنان)|(?:مستشف|عياد|مستوصف)\S*\s+(?:\S+\s+){0,3}(?:ال)?دكتور/;
+const UOH_TARGET = /(?:عقوب|جزا[ءؤئ])\S*\s+(?:ال)?(دكتور|دكتوره|استاذ|استاذه|عضو|معيد|معيده|محاضر|موظف|موظفه)(?=\s|$)/;
+// صاحب العمل جهةٌ أخرى: «موظف في وزارة الصحة»، «دكتور في جامعة القصيم»
+const UOH_ELSEWHERE = /(?:^|\s)(?:موظف|موظفه|دكتور|دكتوره|استاذ|استاذه|عضو|معيد|معيده)\S*\s+(?:\S+\s+)?(?:في|ب)\s*(?:(?:ال)?(?:وزار|بلدي|امان|مستشف|شرك)|جامعه\s+(?!حائل|حايل))/;
+function uohFlags(x) {       // ما في نص واحد: الجامعة، والفئة (موظف/عضو هيئة تدريس)، والموضوع التأديبي، والجنسية
+  const W = uohWords(), hail = /جامعه (?:حائل|حايل)/.test(x);
+  let uni = uohHas(x, W.uni);
+  if (uni && !hail && ((W.otherUni && W.otherUni.test(x)) || UOH_ELSEWHERE.test(x))) uni = false;     // «الجامعة الإسلامية»، «موظف في وزارة الصحة»
+  const phys = UOH_PHYS.test(x) && !/دكتور\S*\s+(?:في|ب)\s*(?:ال)?(?:جامع|كلي)/.test(x);
+  const skip = (w) => (phys && /دكتور|دكاتر/.test(w)) || (UOH_SCHOOL.test(x) && /استاذ|اساتذ/.test(w));     // الطبيب، ومعلّم الثانوية
+  const pe = uohPos(x, W.emp), pf = uohPos(x, W.fac, skip), pa = uohPos(x, W.actor), first = Math.min(...[pe, pf].filter((p) => p >= 0), Infinity);
+  const disc = UOH_DISC.test(x), foreign = UOH_FOREIGN.test(x);
+  // سُئل صراحة عن عقوبة أحدهما («وش عقوبة الدكتور؟»): هو المقصود، ولو ذُكر قبله طالب أو موظف
+  const tg = UOH_TARGET.exec(x);
+  if (tg && !(phys && /دكتور/.test(tg[1]))) { const isEmp = /موظف/.test(tg[1]); return { uni, emp: isEmp, fac: !isEmp, other: false, disc, foreign }; }
+  // السؤال عن شخص آخر: ذُكر قبل الموظف أو عضو هيئة التدريس («طالب ... والدكتور شافه»)، أو سُئل عن عقوبته صراحة («عقوبة الطالب»)
+  const other = (pa >= 0 && pa < first) || /(?:عقوب|جزا[ءؤئ])\S*\s+(?:ال)?(?:طالب|طالبه|مراجع|شركه|مقاول|زائر|مواطن|الراشي|الوسيط)(?=\s|$)/.test(x);
+  return { uni, emp: pe >= 0 && !other, fac: pf >= 0 && !other, other, disc, foreign };
+}
+function uohInfo(n, prev = '', prevU = null, ownTopic = false) {   // n: السؤال بعد norm. prev/prevU: السؤال الذي قبله ونتيجته إن كان هذا تابعاً له
+  const key = prev + '\u0001' + n + '\u0001' + (prevU ? [prevU.uni, prevU.emp, prevU.fac, prevU.disc, prevU.foreign].join() : '') + ownTopic;
+  if (uohMemo[0] === key) return uohMemo[1];
+  const c = uohFlags(n);
+  let f = c;
+  if (prev || prevU) {       // سؤال تابع: الجامعة والموضوع من السابق، والفئة من الحالي إن ذكرها («والدكتور؟»، «والطالب؟») وإلا من السابق
+    const p = prevU || uohFlags(prev), hasRole = c.emp || c.fac || c.other;
+    const otherOrg = !c.uni && /وزار(?:[هة]|ات)|مستشف|امان[هة]|بلدي[هة]|شرك(?:[هة]|ات)|مدارس|مدرس[هة]|القطاع الخاص|جامع(?:[هة]|ات)(?! (?:حائل|حايل))|(?:^|\s)هيئ[هة] (?!(?:ال)?تدريس)/.test(n);     // «وفي وزارة الصحة؟»
+    f = { uni: c.uni || (p.uni && !otherOrg), emp: hasRole ? c.emp : p.emp, fac: hasRole ? c.fac : p.fac,
+      disc: c.disc || (p.disc && !ownTopic),                                       // «وكم إجازته؟» موضوع جديد غير تأديبي
+      foreign: c.foreign || (!hasRole && p.foreign && !/(?:^|\s)[وف]?(?:ال)?سعودي/.test(n)) };   // «والسعودي؟»
+  }
+  const uni = f.uni, emp = uni && f.emp, fac = uni && f.fac, disc = (emp || fac) && f.disc, foreign = f.foreign;
+  const laws = disc ? [...(emp ? UOH_TERMS.employeeLaws : []), ...(fac ? UOH_TERMS.facultyLaws : [])] : [];
+  /* لوائح الفئة الأخرى لا تُرسل (إلا إذا سمّاها الزائر): في الموضوع التأديبي لا يُجاب الموظف من لائحة أعضاء هيئة التدريس، ولا عضو هيئة
+     التدريس من نظام الانضباط. ولائحة غير السعوديين لا تُرسل لمنسوب الجامعة إلا إذا ذُكرت جنسيته أو أنه متعاقد */
+  const nsa = foreign ? [] : ['non-saudi-staff'];
+  const ban = emp && !fac ? [...(disc ? UOH_TERMS.facultyLaws : []), ...nsa] : fac && !emp ? [...(disc ? [...UOH_TERMS.employeeLaws, 'civil'] : []), ...nsa] : [];
+  const out = { uni, emp, fac, disc, foreign, laws, ban };
+  uohMemo = [key, out]; return out;
+}
+const UOH_DEF_SENT = /بشؤون وزارت|الجه[ةه] المستقل|المصلح[ةه] المستقل/;      // جملة تنقل تعريف الوزير نفسه: تبقى كما هي
+// جملة من نظام آخر لا يعرّف الوزير بهذا المعنى (ما لم تذكر معه لوائح الجدول أو الجزاء التأديبي): تبقى كما هي
+const UOH_OTHER_LAW = /نظام (?:مكافح|حماي|هيئ|ديوان|المرافعات|مجلس|المناطق|البيع)|النظام (?:الجزائي|الأساسي|الاساسي)|(?<!(?:التنفيذي[ةه] ل|لائح[ةه] ))نظام الخدم[ةه] المدني[ةه]|وزير التعليم|بالنسب[ةه] للجهات الحكومي|المنظم[ةه] لشؤون منسوبي/;
+const UOH_TABLE_LAW = /الانضباط|للموارد البشري|لائح[ةه] (?:ال)?موارد البشري|تأديبي|تاديبي|الجزاء/;
+// جملة تشرح المسمى الجديد نفسه («مدير الجامعة في اللوائح القديمة هو اليوم رئيس الجامعة»): تبقى كما كتبها، فلا تصير «رئيس الجامعة هو رئيس الجامعة»
+const UOH_NEW = /رئيس\s+(?:ال)?جامع[ةه]/;
+// (لا تكفي «يعني» العابرة ولا «المادة السابقة»: يجب أن تربط الجملةُ المسمى القديم بالجديد)
+const uohExplains = (seg) => {
+  const p = seg.replace(/[ً-ْٰـ]/g, '');
+  return UOH_NEW.test(p) && (/(?:المقصود|يقصد|المراد)\s+(?:ب|من\s+)?(?:مدير\s+الجامع[ةه]|(?:ال)?وزير)/.test(p)
+    || /(?:مدير\s+الجامع[ةه]|الوزير)[^.؟?!؛]{0,40}\s(?:هو|هي|يعني|بمعن[ىي]|صار|اصبح|أصبح|اسمه|يسم[ىي])\s+(?:اليوم\s+|الآن\s+|الان\s+|حاليا\s+)?(?:هو\s+)?رئيس/.test(p)
+    || /(?:المسم[ىي]|اللقب|الاسم)\s+(?:القديم|السابق|الجديد|الحالي|تغير|تغيّر|تغي)/.test(p));
+};
+// النموذج شرح المسمى داخل الجملة («يوقعه الوزير، أي رئيس الجامعة،»): يُحذف الشرح ويُبدَّل اللفظ، ويُقال توضيح الدكتور بعد الجواب مرة واحدة
+const UOH_APPOS = /((?:^|[^ء-ي])[وف]?(?:بال|لل|كال|ال)وزير(?:\s+(?:ال)?مختص)?)\s*[،,]\s*(?:أي|اي|يعني|وهو|وهي|و?المقصود\s+به|و?المراد\s+به|ويقصد\s+به)\s+(?:(?:هنا|عندنا|اليوم|حاليا|في\s+(?:ال)?جامع[ةه](?:\s+حائل)?)\s+)?(?:هو\s+)?رئيس\s+(?:ال)?جامع[ةه](?:\s+حائل)?(?:\s*[،,](?=\s)|(?=\s*[.؟?!؛\n]|\s*$))/g;
+const UOH_APPOS_P = /((?:^|[^ء-ي])[وف]?(?:بال|لل|كال|ال)وزير(?:\s+(?:ال)?مختص)?)\s*\(\s*(?:أي\s+|اي\s+|يعني\s+)?رئيس\s+(?:ال)?جامع[ةه](?:\s+حائل)?\s*\)/g;
+const UOH_MARKS = '[\\u064B-\\u0652\\u0670\\u0640]*';            // تشكيل وتطويل قد يكتبهما النموذج داخل الكلمة
+function uohRx() {
+  if (UOH_R) return UOH_R;
+  const L = '\\u0621-\\u064A\\u064B-\\u0652\\u0670\\u0640', M = UOH_MARKS;
+  const ch = (c, last) => (/[اأإآ]/.test(c) ? '[اأإآ]' : last && /[ةه]/.test(c) ? '[ةه]' : uohEsc(c)) + M;
+  const pat = (s) => s.trim().split(/\s+/).map((w) => [...w].map((c, i, a) => ch(c, i === a.length - 1)).join('')).join('\\s+');
+  const renamed = UOH_TERMS.renamed.map(([from, to]) => [new RegExp(`(^|[^${L}])([وف]?${M}[بلك]?${M})${pat(from)}(?![${L}])`, 'g'), to, new RegExp(`(?:^|[^${L}])[وف]?${M}[بلك]?${M}${pat(from)}(?![${L}])`)]);
+  const ids = new Map();      // الكلمة بلا «ال» ← اللوائح التي تعرّفها («وزير» ← الانضباط ولائحته، «وزير المختص» ← الموارد البشرية)
+  for (const [id, m] of Object.entries(UOH_TERMS.minister)) { const k = norm(m.term).trim().replace(/^ال/, '').replace(/\s+/g, ' '); ids.set(k, [...(ids.get(k) || []), id]); }
+  const terms = [...ids.keys()].sort((a, b) => b.length - a.length);
+  const core = `([وف]?${M})((?:ب${M})?ا${M}ل${M}|ل${M}ل${M}|ك${M}ا${M}ل${M})(${terms.map(pat).join('|')})(?![${L}])`;
+  return (UOH_R = { renamed, ids, minister: new RegExp(`(^|[^${L}])${core}`, 'g'), ministerT: new RegExp(`(?:^|[^${L}])${core}`) });
+}
+const uohBare = (s) => norm(s).replace(/[ً-ْٰـ]/g, '').replace(/\s+/g, ' ').trim();
+// النموذج كتب التوضيح بنفسه («والمقصود بالوزير هنا رئيس الجامعة»): يُقال بنص الدكتور في موضعه، مرة واحدة
+const UOH_SELF_NOTE = new RegExp([
+  '(?:المقصود|يقصد|المراد|يعني|معني|معنى)\\s*(?:ب|من\\s+)?(?:ال)?وزير(?:\\s+(?:ال)?مختص)?[^.؟?!؛\\n]{0,40}رئيس\\s+(?:ال)?جامع[ةه]',      // «والمقصود بالوزير هنا رئيس الجامعة»
+  '(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا\\s+|في\\s+\\S+\\s+)?(?:يقصد|المقصود|المراد)\\s+به\\s+رئيس\\s+(?:ال)?جامع[ةه]',          // «الوزير هنا يقصد به رئيس الجامعة»
+  'رئيس\\s+(?:ال)?جامع[ةه]\\s+(?:هو\\s+)?(?:المقصود|المراد)\\s+ب(?:ال)?وزير(?:\\s+(?:ال)?مختص)?',                                   // «ورئيس الجامعة هو المقصود بالوزير»
+  '(?:بمعن[ىي]|يعني|أي|اي)\\s+(?:أن\\s+|ان\\s+)?(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا\\s+)?(?:هو\\s+)?رئيس\\s+(?:ال)?جامع[ةه]',      // «بمعنى أن الوزير هو رئيس الجامعة»
+  '(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا|عندنا|في\\s+(?:هذ[اه]\\s+)?(?:ال)?(?:نظام|لائح[ةه]|ماد[ةه])|في\\s+(?:ال)?جامع[ةه](?:\\s+حائل)?)\\s+(?:هو\\s+)?رئيس\\s+(?:ال)?جامع[ةه]',      // «والوزير هنا رئيس الجامعة»
+].join('|'));
+function uohFixPart(s, U, R, qPrev = '', qNext = '') {     // نص خارج الاقتباس: يُبدَّل المسمى جملةً جملة
+  const segs = s.split(/(?<=[.؟?!؛\n])/), strip = (x) => x.replace(/[ً-ْٰـ]/g, '');
+  return segs.map((seg, i) => {
+    const plain = strip(seg), self = U?.minister && UOH_SELF_NOTE.exec(plain);
+    const whole = strip((i === 0 ? qPrev : '') + seg + (i === segs.length - 1 ? qNext : ''));
+    if (self) {
+      const tail = plain.slice(self.index + self[0].length).replace(/في (?:هذا |هذه )?(?:ال)?(?:نظام|لائح[ةه]|ماد[ةه])\S*|هنا|[\s.،,؛!]+/g, '');
+      const more = plain.slice(0, self.index).replace(/في جامع[ةه] حائل|[\s.،,و]+/g, '') + tail;
+      if (!more && plain.trim().length <= 100) {           // جملة التوضيح وحدها: تُقال بنص الدكتور
+        U.selfNoted = true;
+        const hrOnly = U.laws.includes('hr-reg') && !U.laws.some((x) => x === 'discipline' || x === 'discipline-reg');
+        const id = /مختص/.test(self[0]) || hrOnly ? 'hr-reg' : U.laws.includes('discipline') || !U.laws.includes('discipline-reg') ? 'discipline' : 'discipline-reg';
+        return seg.match(/^\s*/)[0] + UOH_TERMS.minister[id].note + (seg.match(/\s+$/) || [''])[0];     // يبقى السطر الجديد بعدها
+      }
+      U.selfMention = true;                                // ويُضاف توضيح الدكتور بعد الجواب مرة واحدة
+      const pre = plain.slice(0, self.index), cut = Math.max(pre.lastIndexOf('،'), pre.lastIndexOf(','));
+      if (cut > 0 && !tail) seg = plain.slice(0, cut) + plain.slice(self.index + self[0].length).replace(/^.*?(?=[.؟?!؛\n]|$)/, '');     // يُحذف «، والوزير هنا يقصد به رئيس الجامعة» آخر الجملة
+      else return seg;                                     // يقول أكثر من التوضيح: تبقى كما هي
+    }
+    const sub = U?.minister && !UOH_DEF_SENT.test(whole) && !(UOH_OTHER_LAW.test(plain) && !UOH_TABLE_LAW.test(plain));
+    if (sub) seg = seg.replace(UOH_APPOS, '$1').replace(UOH_APPOS_P, '$1');
+    if (uohExplains(seg)) return seg;
+    let out = seg;
+    for (const [re, to] of R.renamed) out = out.replace(re, (m, a, pre) => a + pre + to);
+    if (sub) {
+      out = out.replace(R.minister, (m, a, conj, art, term) => {
+        for (const id of R.ids.get(uohBare(term)) || ['discipline']) U.hits.add(id);
+        return a + conj + ({ 'بال': 'ب', 'لل': 'ل', 'كال': 'ك', 'ال': '' })[uohBare(art)] + UOH_TERMS.ministerTitle;
+      });
+    }
+    return out;
+  }).join('');
+}
+function uohFix(s, U) {      // يبدّل المسمى في نص الجواب (للعرض والنطق معاً). النص المنقول حرفياً «...» يبقى كما هو، ويُوضَّح بعد الجواب (uohNote)
+  if (!s) return s;
+  const R = uohRx();
+  if (U) { U.hits = new Set(); U.selfNoted = U.selfMention = U.quoteMin = U.quoteRenamed = false; }      // الحالة من النص الحالي كله فقط (البث يستدعيها على نص يكبر)
+  // كلمة واحدة بين علامتي تنصيص («الوزير»، «مدير الجامعة») مصطلحٌ يُتكلَّم عنه، لا نص منقول: تُعامل كباقي الجملة
+  s = s.replace(/«\s*((?:[وفبلك]?(?:ال|لل)?)?(?:وزير(?:\s+(?:ال)?مختص)?|مدير\s+(?:ال)?جامع[ةه]|رئيس\s+(?:ال)?جامع[ةه]))\s*»/g, '$1');
+  const parts = s.split(/(«[^»]*(?:»|$)|“[^”]*(?:”|$))/);
+  return parts.map((p, k) => {
+    if (!(k % 2)) return uohFixPart(p, U, R, parts[k - 1] || '', parts[k + 1] || '');
+    if (U) {                 // اقتباس (ولو لم يُغلق بعد): لا يُبدَّل شيء فيه
+      if (U.minister && !UOH_DEF_SENT.test(p) && R.ministerT.test(p)) U.quoteMin = true;
+      if (R.renamed.some(([, , t]) => t.test(p))) U.quoteRenamed = true;
+    }
+    return p;
+  }).join('');
+}
+function uohStart() {        // حالة الجواب الحالي: يُبدَّل «الوزير» إذا كان السؤال عن الجامعة ومع السؤال مادة من لوائح الجدول فيها «الوزير»
+  return { uni: lastUoh.uni, laws: lastUoh.laws, minister: !!lastUoh.min, minArts: lastUoh.minArts || new Map(), hits: new Set(), noted: false };
+}
+function uohMinisterIn(c) {  // هل في هذه المادة المرسلة (من لوائح الجدول) لفظ «الوزير» كما تعرّفه
+  const mt = UOH_TERMS.minister[c.e.law.id];
+  return !!mt && new RegExp(`(^|[^ء-ي])[وف]?(?:بال|لل|كال|ال)${norm(mt.term).trim().replace(/^ال/, '').split(/\s+/).join('\\s+')}(?![ء-ي])`).test(norm(c.body));
+}
+/* أرقام المواد في الجواب، ومعها النظام المذكور بعدها مباشرة («المادة العاشرة من نظام الانضباط الوظيفي»). «المادتين العاشرة والثانية
+   والعشرين» مادتان: 10 و22 (الواو قبل «العشرين» جزء من الرقم نفسه) */
+// أسماء مختصرة للوائح يكتبها النموذج («من لائحة أعضاء هيئة التدريس»)، بعد norm
+const UOH_LAW_ALIAS = [
+  [/من (?:ال)?لائحه (?:ش[ؤو]?ون )?(?:اعضاء|عضو) هيئه التدريس|من (?:ال)?لائحه (?:ال)?منظمه لش[ؤو]?ون (?:منسوبي|اعضاء)/, 'faculty'],
+  [/من (?:ال)?لائحه (?:ال)?تنفيذيه لنظام الانضباط|من لائحه (?:نظام )?الانضباط/, 'discipline-reg'],
+  [/من (?:ال)?لائحه (?:ال)?تنفيذيه (?:لنظام |ل)(?:ال)?خدمه المدنيه|من لائحه (?:نظام )?(?:ال)?خدمه المدنيه|من (?:ال)?لائحه (?:ال)?تنفيذيه للموارد البشريه|من لائحه (?:ال)?موارد البشريه/, 'hr-reg'],
+];
+function uohCites(reply) {
+  const n = norm(reply).replace(/[ً-ْٰـ]/g, ''), out = [];
+  const names = textLaws().map((l) => [norm(l.name), l.id]).sort((a, b) => b[0].length - a[0].length);
+  const lawAfter = (at) => {          // أقرب نظام يُسمّى بعد الرقم (الاسم الكامل أو المختصر)
+    const s = n.slice(at, at + 160); let best = null;
+    for (const [nm, id] of names) { const j = s.indexOf('من ' + nm); if (j >= 0 && j <= 60 && (!best || j < best[0])) best = [j, id]; }
+    for (const [re, id] of UOH_LAW_ALIAS) { const m = re.exec(s); if (m && m.index <= 60 && (!best || m.index < best[0])) best = [m.index, id]; }
+    return best ? best[1] : null;
+  };
+  for (const m of n.matchAll(/(?:^|[^ء-ي])(?:و|ف)?(?:ال|لل|بال)?ماده\s+([^،.؛\n]{1,40})/g)) { const x = articleNumber(m[1]); if (x) out.push({ num: x, law: lawAfter(m.index + m[0].length - m[1].length) }); }
+  const TENS_W = /^ال(?:عشر|ثلاث|اربع|خمس|ست|سبع|ثمان|تسع)(?:ين|ون)/;
+  for (const m of n.matchAll(/(?:^|[^ء-ي])(?:و|ف)?(?:ال|لل|بال)?مادتين\s+([^،.؛\n]{1,60})/g)) {
+    const law = lawAfter(m.index + m[0].length - m[1].length), parts = [];
+    for (const w of m[1].trim().split(/\s+/)) { if (/^وال/.test(w) && !TENS_W.test(w.slice(1))) parts.push(w.slice(1)); else if (parts.length) parts[parts.length - 1] += ' ' + w; else parts.push(w); }
+    for (const p of parts) { const x = articleNumber(p); if (x) out.push({ num: x, law }); }
+  }
+  return out;
+}
+/* التوضيح مرة واحدة في آخر الجواب. توضيح «الوزير» فقط إذا كان «رئيس الجامعة» في الجواب آتياً من «الوزير» فعلاً: بُدِّل اللفظ، أو نُقل نصٌّ فيه
+   «الوزير»، أو ذكر النموذج رئيس الجامعة مستشهداً بمادة مرسلة فيها هذا اللفظ. وتوضيح «مدير الجامعة» إذا نُقل نص فيه هذا المسمى */
+function uohNote(reply, U) {
+  if (!U || U.noted) return '';
+  const notes = [];
+  if (U.minister && !U.selfNoted && !UOH_DEF_SENT.test(reply)) {
+    // المواد المستشهد بها (ومعها «المادتين ... و...») ونظامها إن سُمّي بعدها: مادة من نظام آخر بالرقم نفسه لا تُحسب
+    const citedMin = uohCites(reply).filter((c) => U.minArts.has(c.num) && (!c.law || U.minArts.get(c.num) === c.law)).map((c) => U.minArts.get(c.num));
+    if (U.hits.size || U.quoteMin || U.selfMention || (UOH_NEW.test(reply.replace(/[ً-ْٰـ]/g, '')) && citedMin.length)) {
+      const HR = /للموارد البشري|لائح[ةه] (?:ال)?موارد البشري|لائح[ةه] (?:نظام )?الخدم[ةه] المدني[ةه]|التنفيذي[ةه] لنظام الخدم[ةه] المدني[ةه]/, DS = /الانضباط/;
+      const id = HR.test(reply) && !DS.test(reply) ? 'hr-reg' : DS.test(reply) && !HR.test(reply) ? 'discipline'
+        : U.hits.has('hr-reg') && !U.hits.has('discipline') ? 'hr-reg' : U.hits.has('discipline') ? 'discipline'
+        : citedMin[0] || U.laws.find((x) => UOH_TERMS.minister[x]) || 'discipline';
+      notes.push((UOH_TERMS.minister[id] || UOH_TERMS.minister.discipline).note);
+    }
+  }
+  if (U.quoteRenamed && !norm(reply).includes(norm(UOH_TERMS.renamedNote))) notes.push(UOH_TERMS.renamedNote);
+  U.noted = true;
+  return notes.join(' ');
+}
+// التوضيح قبل السؤال الختامي («تبي أفصّل لك أكثر؟») لا بعده
+function uohTail(r) {          // السؤال الختامي، بعد علامة إغلاق الاقتباس إن سبقته («...الفصل.» تبي أفصّل؟)
+  const t = /[^.؛!؟?\n]*[؟?]\s*$/.exec(r); if (!t) return null;
+  const q = /^\s*[»”]+/.exec(t[0]); let o = t;
+  if (q) { o = [t[0].slice(q[0].length)]; o.index = t.index + q[0].length; }
+  // سؤال عرض قصير بعد فاصلة («...حسب المادة العاشرة، تبي أفصّل لك أكثر؟»): هو السؤال الختامي وحده
+  const c = /[،,]\s*((?:هل\s+)?(?:تبي|تبغى|تبغي|تحب|تريد|تود|ودك|حاب|تحتاج|اذا تبي|إذا تبي|لو تبي)[^،,.؛!؟?\n]{0,45}[؟?]\s*)$/.exec(o[0]);
+  if (c && o.index + c.index >= 25) { const k = c.index + c[0].length - c[1].length, o2 = [o[0].slice(k)]; o2.index = o.index + k; return o2; }
+  return o;
+}
+function uohPlaceNote(reply, note) {
+  if (!note) return reply;
+  const r = reply.trimEnd(), t = uohTail(r);
+  return t && t.index > 0 ? r.slice(0, t.index).trim() + ' ' + note + ' ' + t[0].trim() : r + ' ' + note;
+}
+function uohVerbatimNote(text) {   // بعد قراءة نص مادة حرفياً (يُقرأ كما هو بلا تبديل)
+  const last = lookupArticle.last; if (!last) return '';
+  const notes = [], mt = UOH_TERMS.minister[last.law.id];
+  if (mt && (UOH_TERMS.noteOnEveryVerbatim || uohInfo(norm(text)).uni) && uohMinisterIn({ e: last, body: last.art.body })) notes.push(mt.note);
+  if (UOH_TERMS.renamed.some(([from]) => norm(last.art.body).includes(norm(from)))) notes.push(UOH_TERMS.renamedNote);
+  return notes.length ? ' ' + notes.join(' ') : '';
+}
+const UOH_CRIME = new Set(['bribery', 'forgery', 'aml', 'protect', 'nazaha']);     // أنظمة فيها عقوبة جزائية للفعل نفسه
+const UOH_ACT = /فلوس|مقابل|رشو|رشا|زور|تزوير|مزور|اختلس|غسل|غسيل|سرق|هدي[هت]|هدايا|عطي[هت]|بلغ|بلاغ|ابتز|نفوذ|واسط|اموال|المال العام|سرب|تسريب|افشا|يفشي|ختم|توقيع (?:مدير|زميل|غير)|شهاد[هت]/;   // فعل محدد في السؤال
+function uohContextNote(uo, order, min, crimeQ = false) {     // يُرسل مع المواد: السؤال عن الجامعة، ولوائح فئته، والمسمى في الجامعة (بلا أرقام)
+  if (!uo.uni) return '';
+  // «اذكر عقوبة الفعل من نظامه أولاً» فقط إذا كان في السؤال نفسه جريمة (crimeQ)، لا لأن مادة من نظام جزائي وقعت في المرجع
+  const role = uo.emp || uo.fac, uni2 = order.some((id) => id === 'faculty' || id === 'non-saudi-staff'), crime = crimeQ && order.some((id) => UOH_CRIME.has(id));
+  const lines = [], how = crime ? 'اذكر عقوبة الفعل من نظامه أولاً، ثم الجزاء التأديبي من' : 'فأجب من';
+  if (uo.disc && uo.emp && !uo.fac) lines.push(`السؤال عن موظف في جامعة حائل. موظفو الجامعة يسري عليهم في التأديب نظام الانضباط الوظيفي ولائحته التنفيذية، واللائحة التنفيذية للموارد البشرية في الخدمة المدنية، ${how} موادها.`);
+  else if (uo.disc && uo.fac && !uo.emp) lines.push(`السؤال عن عضو هيئة تدريس في جامعة حائل. أعضاء هيئة التدريس تسري عليهم في التأديب لائحتهم الخاصة: اللائحة المنظمة لشؤون منسوبي الجامعات السعوديين من أعضاء هيئة التدريس ومن في حكمهم، ${how} موادها.`);
+  else if (uo.disc && uo.emp && uo.fac) lines.push('السؤال عن موظفي جامعة حائل وأعضاء هيئة التدريس فيها. الموظف يسري عليه في التأديب نظام الانضباط الوظيفي ولائحته التنفيذية واللائحة التنفيذية للموارد البشرية، وعضو هيئة التدريس تسري عليه لائحته الخاصة، ففرّق بينهما في الجواب.');
+  if (role) lines.push('إذا وجدت الحكم في المواد فأجب بصيغة تخص الجامعة، وابدأ بعبارة «في جامعة حائل،» (وإن كان الجواب نعم أو لا فابدأ «نعم، في جامعة حائل،» أو «لا، في جامعة حائل،»). وإن لم تجد الحكم فلا تبدأ بها.');
+  if (min) lines.push('إذا نقلت حكماً ورد فيه لفظ «الوزير» في نظام الانضباط الوظيفي ولائحته التنفيذية، أو «الوزير المختص» في اللائحة التنفيذية للموارد البشرية، فهو في جامعة حائل رئيس الجامعة، فسمّه «رئيس الجامعة». ولا تذكر رئيس الجامعة في حكم لم يرد فيه هذا اللفظ، و«الجهة الحكومية» في النصوص هي الجامعة نفسها لا رئيسها. ولا تشرح أنت أن المقصود بالوزير رئيس الجامعة، فهذا التوضيح يُقال بعد جوابك.');
+  if (uni2 && role) lines.push('و«مدير الجامعة» في لوائح الجامعات اسمه اليوم «رئيس الجامعة»، فسمّه «رئيس الجامعة».');
+  return lines.length ? '\n\n【سؤال عن جامعة حائل】\n' + lines.join('\n') : '';     // سؤال عن الجامعة بلا موظف ولا عضو هيئة تدريس ولا لوائح الوزير: كما كان
+}
 let lastCtxInfo = '';                        // لمربع القياس: ما الذي أُرسل مع آخر سؤال
 function retrieveContext(text) {
   if (!LAW_INDEX) buildIndex();
   // v36: علامات الترقيم تُفصل بمسافة، فتنتهي الكلمة قبلها («لو بلّغت؟» مثل «لو بلّغت») وتُعرف نهاية الجملة
   const n = norm(text).replace(/([؟?!.,،؛:«»"()…])/g, ' $1 ').replace(/\s+/g, ' ').trim(), cur = analyze(n);
   if (cur.lawIds.length) lastLawId = cur.lawIds[0];
-  const follow = prevQ && performance.now() - prevQ.at < 240000 && isFollowUp(n, cur) ? analyze(prevQ.n) : null;
-  if (!follow || cur.concepts.length) prevQ = { n: follow && !cur.concepts.length ? prevQ.n : n, at: performance.now() }; else prevQ.at = performance.now();
+  const prevN = prevQ ? prevQ.n : '';
+  // v39: بعد سؤال عن جامعة حائل، «وعضو هيئة التدريس؟» و«ومن صاحب الصلاحية؟» تابعة له أيضاً (لا تُعدّ كذلك بعد أي سؤال آخر، فيبقى السلوك كما كان)
+  // «و» هنا حرف عطف قبل فئة أو أداة سؤال («والدكتور؟»، «ومن...»، «وكم...»)، لا أول «وش» و«وين» و«وزير»
+  const uniFollow = !!(prevQ && prevQ.uni) && /^(?:طيب |زين )?و(?:ال|لل|بال|عضو|اعضاء|من |مين |كم |في |فى |لو |اذا |هل |متي |عن )/.test(n) && cur.base.length <= 4 && cur.lawIds.every((id) => id === 'faculty');
+  const follow = prevQ && performance.now() - prevQ.at < 240000 && (isFollowUp(n, cur) || uniFollow) ? analyze(prevQ.n) : null;
+  // v39: في محادثة عن الجامعة تبقى نتيجة السؤال السابق (الجامعة والفئة) للسؤال الثالث، و«والدكتور؟» لا يحل محل الموضوع بل يُضاف إليه
+  const prevU = follow && prevQ ? prevQ.uo || null : null, uniChain = !!(follow && prevQ && prevQ.uni);
+  const topical = uniChain ? cur.concepts.filter((c) => c.id !== 'faculty' && c.id !== 'contract') : cur.concepts;
+  if (!follow || topical.length) prevQ = { n, at: performance.now(), uni: uohFlags(n).uni };
+  else { if (uniChain && cur.concepts.length) prevQ.n += ' ' + n; prevQ.at = performance.now(); }
+  // v39: سؤال عن موظف أو عضو هيئة تدريس في جامعة حائل (أو تابع لسؤال كذلك): لوائح فئته كأن الزائر سمّاها، ولوائح الفئة الأخرى لا تُرسل
+  const uo = uohInfo(n, follow && prevN ? prevN : '', prevU, topical.length > 0);
+  prevQ.uo = uo; prevQ.uni = uo.uni;
+  const ban = new Set(uo.ban.filter((id) => !cur.lawIds.includes(id) && !(follow && follow.lawIds.includes(id))));
   // دمج السؤال الحالي مع السابق (بوزن أقل) إن كان تابعاً له
-  const lawIds = [...new Set([...cur.lawIds, ...(follow ? follow.lawIds : [])])];
-  const concepts = [...new Set([...cur.concepts, ...(follow ? follow.concepts : [])])].sort(byPrio);
+  // v39: منسوب الجامعة غير السعودي («موظف مصري»، «متعاقد») تسري عليه لائحة توظيف غير السعوديين: كأنه سمّاها
+  const lawIds0 = [...new Set([...cur.lawIds, ...(follow ? follow.lawIds : []), ...(uo.foreign && (uo.emp || uo.fac) ? ['non-saudi-staff'] : [])])].filter((id) => !ban.has(id));
+  // v39: مواد فئته المثبّتة (العقوبات، الصلاحية، التحقيق) بحسب الفئة في هذا السؤال أو في السؤال الذي يتبعه
+  const uohTopic = follow && prevN ? prevN + ' ' + n : n;
+  const uoC = UOH_CONCEPTS.filter((c) => (c.role === 'emp' ? uo.emp : uo.fac) && (!c.disc || uo.disc) && (!c.foreign || uo.foreign) && c.re.test(uohTopic));
+  const concepts = [...new Set([...cur.concepts, ...(follow ? follow.concepts : []), ...uoC])].sort(byPrio);
   // سؤال عن التظلم («كم مدة التظلم؟») مواده أولاً، ولو سبقها كلام عن البلاغ أو الفصل: هي جواب ما سأل عنه
   if (concepts.some((c) => c.id === 'grievance')) concepts.sort((a, b) => (b.id === 'grievance') - (a.id === 'grievance'));
-  const cLaws = [...new Set(concepts.flatMap((c) => c.laws))].filter((id) => !lawIds.includes(id));
+  const cLaws0 = [...new Set(concepts.flatMap((c) => c.laws))].filter((id) => !lawIds0.includes(id) && !ban.has(id));
   const terms = new Map(cur.terms); if (follow) follow.terms.forEach((wgt, t) => { if (!terms.has(t)) terms.set(t, wgt * 0.5); });
-  if (!lastLawId && cLaws.length) lastLawId = cLaws[0];
+  // v39: سؤال موظف أو عضو هيئة تدريس في جامعة حائل: «الجامعة» و«حائل» تحدد المكان لا الموضوع، فلا يُبحث بهما (كانتا تجلبان لوائح الجامعات وتُقصيان المادة المقصودة)
+  if (uo.emp || uo.fac) for (const t of [...terms.keys()]) if (/^(?:جامع|حائل)/.test(t)) terms.delete(t);
+  if (!lastLawId && cLaws0.length) lastLawId = cLaws0[0];
   // وزن كل كلمة بحسب ندرتها: الكلمة التي ترد في أغلب المواد لا تميّز مادة عن أخرى
   const N = LAW_INDEX.length, tl = [...terms.keys()];
   const counts = tl.map((tm) => LAW_INDEX.map((e) => e.n.split(tm).length - 1));
   const dfs = counts.map((cs) => cs.filter(Boolean).length), idf = dfs.map((d) => Math.log(1 + N / (1 + d)));
-  const all = LAW_INDEX.map((e, i) => {
+  const all0 = LAW_INDEX.map((e, i) => {
     let lex = 0;
     tl.forEach((tm, t) => { const c = counts[t][i]; if (c) lex += Math.min(c, 3) * idf[t] * (tm.length > 4 ? 1.3 : 1) * terms.get(tm); });
     let m = 0, rare = false; tl.forEach((tm, t) => { if (counts[t][i]) { m++; if (dfs[t] <= N * 0.05) rare = true; } });
     return { e, lex, sc: lex, m, rare };
   });
+  const all = ban.size ? all0.filter((x) => !ban.has(x.e.law.id)) : all0;     // v39
   /* v36: كل الأنظمة تُرتَّب مع كل سؤال بحسب صلتها به (مجموع أقوى ثلاث مواد في كل نظام)، والأقرب منها يُعامل كأن الزائر سمّاه.
      مادة لا يجمعها بالسؤال إلا كلمة واحدة شائعة («جريمة») لا تُحسب، وإلا رجّحت نظاماً بلا سبب. */
   const linked = (x) => x.lex > 0 && (tl.length <= 1 || x.m >= 2 || x.rare);
@@ -1822,14 +2186,25 @@ function retrieveContext(text) {
   for (const x of all) if (x.lex > 0 && (tl.length <= 1 || x.m >= 2)) lawSc.set(x.e.law.id, [...(lawSc.get(x.e.law.id) || []), x.lex]);
   const ranked = [...lawSc].map(([id, a]) => [id, a.sort((p, q) => q - p).slice(0, 3).reduce((s, v) => s + v, 0)]).sort((p, q) => q[1] - p[1]);
   // إن سمّى الزائر نظاماً أو مسّ السؤال معنى معروفاً، يُضاف نظام آخر فقط إذا كانت صلته بالسؤال أعلى من صلة ما سمّاه (حتى لا تزاحم مواده المواد الأصح)
-  const sig = new Set([...lawIds, ...cLaws]), sigTop = Math.max(0, ...ranked.filter(([id]) => sig.has(id)).map(([, s]) => s));
-  const routed = ranked.filter(([id, s], i) => i < 3 && !sig.has(id) && (!sig.size || s > sigTop) && s >= ranked[0][1] * 0.45).map(([id]) => id).slice(0, sig.size ? 2 : 3);
+  const routeFor = (ids, cl) => {
+    const sig = new Set([...ids, ...cl]), sigTop = Math.max(0, ...ranked.filter(([id]) => sig.has(id)).map(([, s]) => s));
+    return ranked.filter(([id, s], i) => i < 3 && !sig.has(id) && (!sig.size || s > sigTop) && s >= ranked[0][1] * 0.45).map(([id]) => id).slice(0, sig.size ? 2 : 3);
+  };
+  const routed0 = routeFor(lawIds0, cLaws0);
+  // v39: لوائح فئة منسوب الجامعة تُعامل كأن الزائر سمّاها، إلا إذا مسّ السؤال نظاماً فيه عقوبة جزائية للفعل نفسه (رشوة، تزوير، غسل أموال،
+  // حماية المبلّغين، نزاهة): حينها لا تزاحمه، وتبقى مواد الفئة المثبّتة (العقوبات التأديبية) معه
+  // نظام جزائي سمّاه الزائر أو مسّه معنى معروف، أو قرّبه البحث والسؤال يصف فعلاً («سرّب الأسئلة مقابل فلوس») لا عقوبات الفئة عموماً
+  const crime = [...lawIds0, ...cLaws0].some((id) => UOH_CRIME.has(id)) || (UOH_ACT.test(uohTopic) && routed0.some((id) => UOH_CRIME.has(id)));
+  const lawIds = crime || !uo.laws.length ? lawIds0 : [...new Set([...lawIds0, ...uo.laws])].filter((id) => !ban.has(id));
+  const cLaws = cLaws0.filter((id) => !lawIds.includes(id));
+  const routed = lawIds === lawIds0 ? routed0 : routeFor(lawIds, cLaws);
   for (const x of all) if (x.lex) x.sc = x.lex + (lawIds.includes(x.e.law.id) ? 4 : cLaws.includes(x.e.law.id) ? 3 : routed.includes(x.e.law.id) ? 2 : 0);
   const byLaw = (id) => all.filter((x) => x.e.law.id === id), best = (xs, k) => xs.filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, k);
   // الأقوى صلة: مادة تشترك مع السؤال في كلمتين على الأقل (كلمة واحدة نادرة، مثل «الغسيل» في الإجازة المرضية، لا تجعلها أول ما يُرسل)
   const strong = (k) => { const top = best(all.filter((x) => x.lex > 0 && (tl.length <= 1 || x.m >= 2)), k); return top.filter((x) => x.sc >= (top[0]?.sc || 0) * 0.35); };
   const picked = [];                          // بترتيب الأولوية: المثبّتة (الأخص أولاً)، ثم الأقوى صلة، ثم النظام الكامل، ثم الأقرب من كل نظام، ثم الأقرب إجمالاً
-  for (const c of concepts) for (const [id, nums] of Object.entries(c.pins)) for (const num of nums) { const x = all.find((y) => y.e.law.id === id && y.e.num === num); if (x) picked.push({ ...x, pin: true }); }
+  // v39: المواد المثبّتة لمعنى السؤال تبقى ولو كان نظامها مستبعداً لفئته (عضو هيئة تدريس يتاجر أو يفشي الأسرار: لا نص في لائحته غيرها)
+  for (const c of concepts) for (const [id, nums] of Object.entries(c.pins)) for (const num of nums) { const x = (c.id.startsWith('uoh-') ? all : all0).find((y) => y.e.law.id === id && y.e.num === num); if (x) picked.push({ ...x, pin: true }); }
   picked.push(...strong(3));
   const named = lawIds.length === 1 ? textLaws().find((l) => l.id === lawIds[0]) : null;
   const wholeIds = [...new Set([...(named && named.articles.reduce((s, a) => s + a.body.length + 60, 0) <= CTX_BUDGET - 400 ? [named.id] : []), ...[...lawIds, ...cLaws].filter((id) => WHOLE.has(id))])];
@@ -1855,13 +2230,18 @@ function retrieveContext(text) {
   const hayB = hay.replace(/تحقيق/g, ' ');     // «التحقيق» ليست «حقّي»
   // v34: كلمة قصيرة عامة وحدها («حائل»، «مثال»، «حقي»، «اخاف») لا تكفي لإرفاق جواب جاهز، وإلا ذكره النموذج في سؤال لا علاقة له به
   const bank = BANK.map((b) => { const ks = b.k.filter((k) => hayB.includes(k)); return { b, m: ks.length, strong: ks.some((k) => k.length >= 5) }; })
-    .filter((x) => x.m >= 2 || (!courtQ && x.m === 1 && x.strong)).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);
+    .filter((x) => x.m >= 2 || (!courtQ && x.m === 1 && x.strong)).filter((x) => !((uo.emp || uo.fac) && x.b.id === 'uoh')).sort((x, y) => y.m - x.m).slice(0, 2).map((x) => x.b);   // v39: سؤال عن عقوبات موظف الجامعة لا يُرفق معه «دور جامعة حائل في التوعية»
   lastCtxInfo = (order.map((id) => `${id}(${chosen.filter((c) => c.e.law.id === id).length})`).join(' ') || '-') + (bank.length ? ' | bank:' + bank.map((b) => b.id).join(',') : '') + (follow ? ' | follow-up' : '')
-    + (concepts.length ? ' | m:' + concepts.map((c) => c.id).join(',') : '') + (routed.length ? ' | r:' + routed.join(',') : '');
+    + (concepts.length ? ' | m:' + concepts.map((c) => c.id).join(',') : '') + (routed.length ? ' | r:' + routed.join(',') : '') + (uo.uni ? ' | uoh' + (uo.emp ? ':emp' : '') + (uo.fac ? ':fac' : '') : '');
+  // v39: المواد المرسلة من لوائح الجدول وفيها لفظ «الوزير» (رقم المادة ← اللائحة). لعضو هيئة التدريس وحده لا يُبدَّل «الوزير» (لائحته لا تعرّفه)
+  const minArts = new Map(); for (const c of chosen) if (uohMinisterIn(c)) minArts.set(c.e.num, c.e.law.id);
+  const uohMin = uo.uni && !(uo.fac && !uo.emp) && minArts.size > 0;
+  lastUoh = { uni: uo.uni, laws: order, min: uohMin, minArts };
   // v34: العناوين بصيغة لا يقلدها النموذج في كلامه («المتاح أمامي»...). الخادم يقرأ عناوين المواد 【النظام — المادة】 ليتحقق من أرقامها
   return '【الأنظمة التي تعرفها، ولا تعرف غيرها】\n' + textLaws().map((l) => l.name).join('؛ ') + '.\n\n'
     + (bank.length ? '【أجوبة موثقة】\n' + bank.map((b) => `س: ${b.q}\nج: ${b.a}`).join('\n') + '\n\n' : '')
-    + '【نصوص المواد】\n' + (chosen.length ? chosen.map((c) => `【${c.e.law.name} — ${c.e.a.title}】\n${c.body}`).join('\n\n') : '(لا يوجد نص يتعلق بهذا السؤال)');
+    + '【نصوص المواد】\n' + (chosen.length ? chosen.map((c) => `【${c.e.law.name} — ${c.e.a.title}】\n${c.body}`).join('\n\n') : '(لا يوجد نص يتعلق بهذا السؤال)')
+    + uohContextNote(uo, order, uohMin, crime);
 }
 
 /* سؤال الزائر يطابق سؤالاً معتمداً (بعد حذف أدوات السؤال والحشو)؟ */
@@ -1903,7 +2283,8 @@ async function ask(text, item = null) {
   askCount++;
   let reply, suggestions = [], hit = item || exactBank(text), streamed = null;      // سؤال مطابق لسؤال معتمد: يُجاب بجوابه المعتمد كما هو
   const exact = hit ? null : lookupArticle(text);        // «المادة كذا من نظام كذا»: تُقرأ حرفياً من ملف الأنظمة
-  if (exact) { reply = exact; T.mark('exact'); T.mark('firstText'); }
+  if (exact) { reply = exact + uohVerbatimNote(text); T.mark('exact'); T.mark('firstText'); }     // v39: تُقرأ كما هي، ثم توضيح جامعة حائل إن لزم
+  let U = null;                                          // v39: تبديل المسمى في هذا الجواب (UOH_TERMS)
   track('q', { kind: hit ? 'bank' : exact ? 'exact' : 'ai', id: hit ? hit.id : '', src: takeSrc(), text: hit ? '' : text });
   if (!hit && !exact) {
     // إذا تأخر الجواب قال نزيه كلمة واحدة («أبشر») فيعرف الزائر أنه سُمع، ثم يكمل بالجواب دون انقطاع. انظر CONFIG.ack
@@ -1911,7 +2292,8 @@ async function ask(text, item = null) {
     if (sp) streamed = sp;
     const fillT = null;
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context: ctxFor(text), stream: true }), signal: (askAbort = new AbortController()).signal });
+      const context = ctxFor(text); U = uohStart();
+      const r = await fetch(`${CONFIG.apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history, context, stream: true }), signal: (askAbort = new AbortController()).signal });
       if (r.ok && r.body && (r.headers.get('content-type') || '').startsWith('text/plain')) {
         if (DEBUG) T.model = r.headers.get('x-chat') || '';
         // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
@@ -1927,6 +2309,8 @@ async function ask(text, item = null) {
           let end = -1; const re = /[.؟?!؛\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/g; let m;
           while ((m = re.exec(rest))) end = m.index + 1;
           if (end < 0) return;
+          // v39: سؤال ختامي («تبي أفصّل لك أكثر؟») ينتظر نهاية الجواب في سؤال الجامعة: قد يأتي توضيح «الوزير» قبله
+          if (U && (U.minister || U.quoteRenamed)) { const q = uohTail(rest.slice(0, end)); if (q) { end = q.index; if (end <= 0) return; } }
           const ready = rest.slice(0, end);
           if (ready.trim().length < 20) return;          // جملة قصيرة جداً: تنتظر ما بعدها حتى لا يتقطع الصوت مقاطع صغيرة
           splitForSpeech(ready, speechChunk()).forEach((x) => sp.push(x));
@@ -1937,9 +2321,12 @@ async function ask(text, item = null) {
           if (done) break;
           if (my !== session) { try { reader.cancel(); } catch {} return; }
           full += dec.decode(value, { stream: true });
-          const ans = full.split('§')[0];
+          // v39: المسمى يُبدَّل مرة واحدة في النص كله (UOH_TERMS)، ومنه يُقطع الصوت والنص المعروض معاً، فلا يختلف المنطوق عن المكتوب
+          const raw = full.split('§')[0]; let k = -1; { const re = /[.؟?!؛\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/g; let m; while ((m = re.exec(raw))) k = m.index + 1; }
+          const ans = k > 0 ? uohFix(raw.slice(0, k), U) : '';      // الجملة الناقصة لا تُعالج ولا تُنطق قبل اكتمالها
           if (!firstSaid) {
             /* v35: الخادم يرسل الجملة كاملة بلا مسافة بعدها، فتُقبل نهاية الجملة في آخر ما وصل أيضاً (كانت الأولى تنتظر وصول الثانية) */
+            // v39: في سؤال الجامعة لا تُقطع الجملة الأولى عند الفاصلة: يُحكم على تبديل «الوزير» بالجملة كاملة
             const m1 = /[.؟?!\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/.exec(ans.slice(18)), m2 = /[،؛:](?=\s)/.exec(ans.slice(45));
             const cut = Math.min(m1 ? 18 + m1.index + 1 : Infinity, m2 ? 45 + m2.index + 1 : Infinity);
             if (cut <= ans.length) {
@@ -1952,18 +2339,22 @@ async function ask(text, item = null) {
           } else if (incremental) pushReady(ans, false);
           if (ans.trim()) { showCaption(text, ans.trim()); if (!settings.voice) hideWait(waitMine); }    // v38: «نطق الإجابات» مطفأ: تختفي «لحظة…» مع أول نص
         }
-        const [ans, extra = ''] = full.split('§');
+        const [raw0, extra = ''] = full.split('§'), ans = uohFix(raw0, U);
         reply = ans.trim();
         if (!reply) throw new Error('empty');
         suggestions = extra.split('|').map((x) => x.trim().replace(/^[-•\s]+/, '')).filter((x) => x.length > 3 && x.length < 70).slice(0, 2);
         clearTimeout(fillT); firstSaid = true;
         if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; lastAskSeq = speakSeq; }
-        pushReady(ans, true);
+        // v39: توضيح جامعة حائل مرة واحدة، قبل السؤال الختامي إن لم يُنطق بعد
+        const note = uohNote(reply, U), body = ans.trimEnd(), tail = note && uohTail(body);
+        if (tail && tail.index > 0 && tail.index >= spoken) { pushReady(body.slice(0, tail.index), true); sp.push(note); sp.push(tail[0].trim()); reply = uohPlaceNote(reply, note); }
+        else { pushReady(ans, true); if (note) { sp.push(note); reply += ' ' + note; } }
       } else {
         clearTimeout(fillT); firstSaid = true; streamed = null;
         const data = await r.json();
         if (!r.ok || !data.reply) throw new Error(data.error);
-        reply = data.reply; suggestions = data.suggestions || [];
+        reply = uohFix(data.reply, U); suggestions = data.suggestions || [];
+        reply = uohPlaceNote(reply, uohNote(reply, U));
       }
     } catch (e) {
       clearTimeout(fillT);

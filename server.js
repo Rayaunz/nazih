@@ -214,10 +214,26 @@ function ordWord(w) {
   const hit = ORD.find(([k]) => w.startsWith(k));
   return hit ? hit[1] : null;
 }
+/* v39: والمئات: «الخامسة بعد المائة» و«الخامسة والمائة» و«المائة والخامسة» و«مئة وخمسة» = 105، «التاسعة بعد المائتين» = 209،
+   «المائة» = 100. كانت تُقرأ 5 و9، فتُحذف جملة صحيحة تذكر مادة من اللائحة التنفيذية للموارد البشرية (261 مادة) ويقول نزيه
+   «ما عندي معلومة مؤكدة». و«مئة ألف ريال» أو «مائة وثمانين يوماً» بعد كلمة «المادة» مبلغ أو مدة، لا رقم مادة.
+   (public/js/app.js يقرأ الأرقام بالطريقة نفسها: articleNumber) */
+const HUNDREDS = (w) => (/^(?:ال)?(?:مئه|مائه|ميه)$/.test(w || '') ? 100 : /^(?:ال)?(?:مئت|مائت|ميت)(?:ين|ان|ا)$/.test(w || '') ? 200 : 0);
+const AMOUNT_AFTER = /^(?:ال)?(?:الف|الاف|الفا|مليون|ملايين|مليار|مليارات|ريال|ريالا|ريالات|بالمئه|بالمائه|بالميه|يوم|يوما|ايام|اسبوع|اسبوعا|اسابيع|سنه|سنوات|سنين|عام|عاما|اعوام|شهر|شهرا|اشهر|شهور|ساعه|ساعات|درجه|كيلو|مره|مرات)$/;
 function artNum(str) {
+  const t = toks(str).slice(0, 7);
+  let i = 0; const base = HUNDREDS(t[0]); if (base) i = 1;
   let total = 0, got = false;
-  for (const tk of toks(str).slice(0, 3)) { const v = ordWord(tk); if (v === null) break; total += v; got = true; if (/^[0-9٠-٩]+$/.test(tk)) break; }
-  return got ? total : null;
+  for (const s = i; i < t.length && i < s + 3; i++) { const v = ordWord(t[i]); if (v === null) break; total += v; got = true; if (/^[0-9٠-٩]+$/.test(t[i])) return base ? null : total; }
+  if (base) {                                   // «مية» وحدها أو «مية من مية»: درجةٌ أو كمية («المادة مية» = درجة المقرر)، لا رقم مادة
+    if (AMOUNT_AFTER.test(t[i] || '')) return null;
+    if (!got && (!/^ال/.test(t[0]) || (t[i] === 'من' && (HUNDREDS(t[i + 1]) || /^[0-9٠-٩]+$/.test(t[i + 1] || ''))))) return null;
+    return base + total;
+  }
+  if (!got) return null;
+  if (t[i] === 'بعد' && HUNDREDS(t[i + 1])) return total + HUNDREDS(t[i + 1]);
+  if (/^و/.test(t[i] || '') && HUNDREDS(t[i].slice(1))) return total + HUNDREDS(t[i].slice(1));
+  return total;
 }
 const ART_RE = new RegExp(`(?:^|[^${AR}])(?:و|ف)?(?:ال|لل|بال)?ماده\\s+([^\\n]{1,40})`, 'g');
 const artRefs = (n) => [...n.matchAll(ART_RE)].map((m) => artNum(m[1])).filter((x) => x);
@@ -232,7 +248,25 @@ function groundFacts(context) {
     laws.get(name).add(num); arts.add(num);
   }
   artRefs(n).forEach((x) => arts.add(x));
-  return { laws, arts, nums: new Set(numPhrases(n).map((p) => p.v)) };
+  // v39: أسماء كل الأنظمة المعروفة (أول المرجع)، الأطول أولاً: رقم مادة يُنسب إلى نظام ليست مواده في المرجع لا يُقبل
+  const head = /【الانظمه التي تعرفها، ولا تعرف غيرها】\s*([^【]*)/.exec(n);
+  const known = head ? head[1].split(/[؛\n]/).map((x) => x.replace(/[.\s]+$/, '').trim()).filter((x) => x.length > 6).sort((a, b) => b.length - a.length) : [];
+  // ومادة يذكرها المرجع نفسه منسوبةً إلى نظام («حسب المادة الثانية من نظام هيئة الرقابة...» في الأجوبة الموثقة) مقبولة لذلك النظام
+  for (const r of lawRefs(n, known)) if (r.law) { if (!laws.has(r.law)) laws.set(r.law, new Set()); laws.get(r.law).add(r.num); arts.add(r.num); }
+  return { laws, arts, nums: new Set(numPhrases(n).map((p) => p.v)), known };
+}
+/* كل «المادة N» في النص، ومعها النظام المذكور بعدها مباشرة («المادة N من <اسم النظام>») إن وُجد. الاسم الأطول أولاً، فلا يُحسب
+   «نظام الانضباط الوظيفي» داخل اسم لائحته التنفيذية. و«اللائحة التنفيذية لنظام الخدمة المدنية» اسمٌ آخر للائحة الموارد البشرية */
+function lawRefs(n, known) {
+  const hr = known.find((k) => k.includes('للموارد البشريه')), dr = known.find((k) => k.includes('التنفيذيه لنظام الانضباط'));
+  let s = n;
+  if (hr) s = s.replace(/(?:اللائحه التنفيذيه|لائحه)\s+ل?نظام الخدمه المدنيه/g, hr);
+  if (dr) s = s.replace(/لائحه (?:نظام )?الانضباط الوظيفي/g, dr);
+  return [...s.matchAll(ART_RE)].map((m) => {
+    const num = artNum(m[1]); if (!num) return null;
+    const after = s.slice(m.index + m[0].length - m[1].length, m.index + m[0].length - m[1].length + 160);
+    return { num, law: known.find((k) => { const j = after.indexOf('من ' + k); return j >= 0 && j <= 45; }) || null };
+  }).filter(Boolean);
 }
 const FILLER_RE = /(^|[\s،.!؟])(?:لحظ[ةه](?:[\s،.!…]+لحظ[ةه])*|لحظات|خل(?:ي)?ني\s+(?:أ|ا)?(?:شوف|تأكد|تاكد|دور|بحث)|دعني\s+(?:أ|ا)?(?:تحقق|رى|بحث|تأكد|تاكد))(?=[\s،.!؟…]|$)[\s،.!…]*/g;
 const META_RE = new RegExp([
@@ -250,9 +284,11 @@ function checkSentence(s, f) {
   const n = nrm(t);
   let why = META_RE.test(n) ? 'meta' : '';
   if (!why && f) {
-    const named = [...f.laws.keys()].filter((name) => n.includes(name));
-    for (const num of artRefs(n)) {
-      const ok = f.arts.has(num) && (!named.length || named.some((name) => f.laws.get(name).has(num)) || artRefs(n).length > 1);
+    const named = [...f.laws.keys()].filter((name) => n.includes(name)), refs = lawRefs(n, f.known || []);
+    for (const { num, law } of refs) {
+      // v39: مادة نُسبت صراحةً إلى نظام («المادة N من <نظام>»): يجب أن تكون من مواد ذلك النظام في المرجع. وإلا كما كان
+      const ok = law ? f.laws.has(law) && f.laws.get(law).has(num)
+        : f.arts.has(num) && (!named.length || named.some((name) => f.laws.get(name).has(num)) || refs.length > 1);
       if (!ok) { why = `article ${num}`; break; }
     }
     if (!why) for (const p of numPhrases(n)) if (p.unit && !f.nums.has(p.v)) { why = `number ${p.v}`; break; }
