@@ -976,7 +976,7 @@ function makeLemonAvatar(own) {
   const markShape = () => { box?.classList.toggle('tall', video.videoHeight > video.videoWidth); setAR(video.videoWidth, video.videoHeight); };
   video.addEventListener('resize', markShape); video.addEventListener('loadedmetadata', markShape);
   /* ---- صورة الشخصية أثناء الاتصال: لقطة من الوجه الحي نفسه في هذا الجهاز إن وُجدت، وإلا الصورة المرفقة مع الموقع ---- */
-  const PKEY = 'nazih.lposter', DEFAULT_POSTER = 'assets/lemon-poster.jpg';
+  const PKEY = 'nazih.lposter', DEFAULT_POSTER = 'assets/lemon-face.jpg';       // لقطة من الوجه الحي نفسه
   function setPoster(url) { if (!poster) return; poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
   poster?.addEventListener('load', () => { if (!video.videoWidth) setAR(poster.naturalWidth, poster.naturalHeight); });
   poster?.addEventListener('error', () => { if (!poster.src.endsWith(DEFAULT_POSTER)) { try { localStorage.removeItem(PKEY); } catch {} setPoster(DEFAULT_POSTER); } });

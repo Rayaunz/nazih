@@ -18,7 +18,7 @@
   (function () {
     var lemon = false;
     try { var a = new URLSearchParams(location.search).get('avatar'); lemon = !new URLSearchParams(location.search).get('test') && (a ? a === 'lemon' : localStorage.getItem('nazih.avatar') === 'lemon'); } catch (e) {}
-    var pre = lemon ? ['assets/lemon-poster.jpg', 'assets/lemon-bg.jpg'] : ['assets/avatar-own.jpg', 'assets/avatar-bg.jpg', 'assets/avatar-mask.png'];
+    var pre = lemon ? ['assets/lemon-face.jpg'] : ['assets/avatar-own.jpg', 'assets/avatar-bg.jpg', 'assets/avatar-mask.png'];
     for (var i = 0; i < pre.length; i++) document.write('<link rel="preload" as="image" href="' + pre[i] + '">');
     /* مكتبة LiveKit تُنزَّل من فتح الصفحة (الإصدار نفسه الذي في CONFIG.livekitVersion داخل app.js) */
     if (lemon) document.write('<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/livekit-client@2.24.1/+esm" crossorigin>');

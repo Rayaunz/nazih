@@ -428,9 +428,10 @@ dialog .row select{font:inherit;font-size:.95em;padding:8px 10px;border-radius:1
 /* ---------- v35: وجه LemonSlice (‎/?avatar=lemon‎) ----------
    فيديو LemonSlice طولي (نحو 756×1220). على الجوال الطولي يبقى كما هو (يملأ الشاشة)، لأن شكله هناك ممتاز.
    حين يكون مكان الشخصية أعرض من الفيديو بوضوح (آيباد، لابتوب، شاشة عرض) يُعرض الفيديو بارتفاع المكان كاملاً في الوسط بلا أي قص،
-   ويمتلئ الجانبان بخلفية من مشهد الشخصية نفسه (مكتبة نزيه الجديد) مضبّبة حتى تتصل ألوانها بالفيديو، والشعاران يمين ويسار الشخصية.
+   ويمتلئ الجانبان بتدرّج ألوان جدار الوجه الحي نفسه (أُخذت من أطراف الفيديو: كريمي في الأعلى وفاتح في الأسفل) فيتصل بالفيديو بلا حدّ،
+   والشعاران يمين ويسار الشخصية. صورة الانتظار lemon-face.jpg لقطة من الوجه الحي نفسه، فلا يتغير المشهد حين يظهر الوجه.
    --lemon-ar: نسبة عرض الفيديو إلى ارتفاعه (تُحدَّث من الفيديو نفسه)، --hdr: أسفل الشريط العلوي (حتى لا يغطي الرأس). */
-body.lemon #simliWait{background:#e8dccb}
+body.lemon #simliWait{background:#e6dccf}
 body.lemon .sw-card{display:none}                        /* لا دائرة تحميل: تظهر صورة الشخصية الجديدة نفسها حتى يتصل الوجه */
 body.lemon #simliPoster{object-position:50% 50%}
 body.lemon #simliVideo{object-position:50% 40%}
@@ -439,7 +440,7 @@ body.lemon #simliVideo{object-position:50% 40%}
 @container (min-aspect-ratio:7/10){
   body.lemon #simliBox{left:0;transform:none;width:100%;overflow:hidden;
     --vh:calc(100cqb - var(--hdr,0px));--vw:calc(var(--vh) * var(--lemon-ar,.62));--lside:calc((100cqi - var(--vw)) / 2)}
-  body.lemon #simliBox::before{content:"";position:absolute;inset:-8%;z-index:0;background:#cdb99c url(../assets/lemon-bg.jpg) center/cover no-repeat;filter:blur(calc(2.2*var(--u))) saturate(1.05) brightness(.93)}
+  body.lemon #simliBox::before{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,#e6dccf 0%,#e6dbce 30%,#e2d6c6 42%,#e9e5ea 60%,#e7e3ea 86%,#d4cdd2 100%)}
   body.lemon #simliWait{background:transparent}
   body.lemon #simliVideo,body.lemon #simliPoster{position:absolute;z-index:1;top:var(--hdr,0px);left:50%;right:auto;bottom:auto;transform:translateX(-50%);height:var(--vh);width:var(--vw);max-width:none;object-fit:cover;object-position:50% 50%;
     -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%)}
