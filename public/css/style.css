@@ -468,3 +468,45 @@ body.lemon-clip .talk-badge{display:none}                /* الوجه نفسه 
 /* ---------- v35: «اضغط وتكلّم» (‎?ptt=1‎): زر المايك يُضغط مع الاستمرار، فلا تظهر قائمة اللمس الطويل ولا يتحدد النص ---------- */
 body.hold .mic-btn{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.hold .mic-btn.listening{transform:scale(1.08)}
+
+/* ---------- v38: ملاحظات مراجعة الآيباد ---------- */
+/* نص الجواب: كلمة طويلة بلا مسافات (رابط) تلتف داخل البطاقة بدل أن تخرج من يسارها وتُقص. النص العادي لا يتغير في أي مقاس */
+#caption{overflow-wrap:anywhere;word-break:break-word}
+/* الشاشة الرئيسية: قرصة بإصبعين لا تكبّر الصفحة (فيبدو النص مقصوصاً)، والتمرير يبقى كما هو */
+body.screen{touch-action:pan-x pan-y}
+/* الشاشات العريضة فقط (الجوال طولياً وعرضياً كما هو) */
+@media (min-width:600px) and (min-height:480px){
+  /* شريط الأسئلة: يتلاشى داخل الهامش فقط، فأول بطاقة على اليمين كاملة الوضوح (كان التلاشي 5% من العرض، أوسع من الهامش) */
+  .carousel-wrap{-webkit-mask-image:linear-gradient(90deg,transparent,#000 var(--side),#000 calc(100% - var(--side)),transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 var(--side),#000 calc(100% - var(--side)),transparent)}
+  /* اللوحات (الاختبار وشرح الجواب والأنظمة) لا تمر تحت زر المايك العائم يميناً، فلا تختفي بدايات الأسطر */
+  body.did-on.ptt .sheet{inset-inline-start:max(calc(22*var(--u)),calc((100vw - 150*var(--u))/2))}
+  body.did-on.ptt .ptt-label{max-width:none}
+}
+/* الآيباد الطولي: لوحة الأنظمة لا تمر تحت زرّي لوحة المفاتيح والإعدادات يساراً */
+@media (min-width:600px) and (max-aspect-ratio:999/1000){      /* الطولي فقط: الشاشة المربعة تماماً تأخذ قاعدة العرضي أدناه */
+  body.did-on #sheet-laws{inset-inline-end:calc(12.5*var(--u))}
+}
+/* الشعاران ثابتان وظاهران في كل حالات المحادثة (وضع lemon، الشاشة العرضية): مكانهما ومقاسهما من مقاس الشاشة وحده
+   (نسبة الفيديو .62 وشريط علوي 9.5 وحدة، وهي نتيجة المعادلة السابقة نفسها)، فلا يتحركان بين الترحيب والمحادثة ولا مع إطار الفيديو.
+   واللوحات وبطاقة الجواب وبطاقة الترحيب تبقى في العمود الأوسط بين الشعارين فلا تغطيهما */
+@media (min-aspect-ratio:1/1) and (min-height:480px){
+  body.lemon{--lg-side:calc((100vw - 67*var(--u)) / 2);--lg-w:min(calc(var(--lg-side) * .62),calc(30*var(--u)));
+    --lg-in:calc(var(--lg-side) / 2 + var(--lg-w) / 2 + 2*var(--u))}
+  body.lemon #simliBox .wall-logo,body.lemon #simliBox.tall .wall-logo{top:calc(42*var(--u));width:var(--lg-w);max-height:calc(36.5*var(--u))}
+  body.lemon #simliBox .wl-uoh{right:calc(var(--lg-side) / 2)}
+  body.lemon #simliBox .wl-nazaha{left:calc(var(--lg-side) / 2)}
+  body.lemon.did-on .sheet{inset-inline:max(var(--lg-in),calc((100vw - 150*var(--u)) / 2))}
+  body.lemon.did-on #caption{margin-left:max(var(--lg-in),calc((100vw - 150*var(--u)) / 2));margin-right:max(var(--lg-in),calc(23*var(--u)))}
+  body.lemon.screen.attract #attract:not([hidden]){inset-inline:var(--lg-in)}
+  body.lemon.did-on #sheet-report .report-grid{grid-template-columns:1fr}     /* العمود الأوسط أضيق: بطاقة البلاغ بعرضه كاملاً فلا ينقسم البريد في منتصفه */
+}
+/* «لحظة…»: من السؤال حتى يُسمع أول صوت، في الفراغ (9 وحدات) بين بطاقة الجواب وشريط الأسئلة (الشاشة الرئيسية فقط). لا تغطي الوجه ولا الشعارين ولا البطاقة */
+#waitPill{display:none}
+body.screen.did-on.waiting:not(.attract):not(.typing) #waitPill{display:flex;align-items:center;gap:calc(1.2*var(--u));position:absolute;z-index:4;left:0;right:0;
+  margin-inline:auto;width:max-content;max-width:80%;bottom:calc(var(--dock) + 1.3*var(--u));padding:calc(.7*var(--u)) calc(3*var(--u));border-radius:99px;
+  background:rgba(255,255,255,.95);color:var(--green);font-weight:700;font-size:calc(3*var(--u));line-height:1.3;box-shadow:var(--shadow);
+  pointer-events:none;animation:waitIn .15s ease-out .1s both}
+#waitPill .dots{padding:0}
+@keyframes waitIn{from{opacity:0}to{opacity:1}}
+body.waiting .mic-btn{animation:think 1.1s ease-in-out infinite}
