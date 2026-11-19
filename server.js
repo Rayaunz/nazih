@@ -1025,7 +1025,7 @@ async function handleLemonCtl(req, res) {
 }
 
 // ---------- الملفات الثابتة ----------
-const zlib = require('zlib');
+const zlib = require('zlib'), { pipeline } = require('stream');
 const GZ_CACHE = new Map();                       // ضغط الملفات النصية مرة واحدة ثم حفظها في الذاكرة
 const TEXT_EXT = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt']);
 function serveStatic(req, res) {
@@ -1048,7 +1048,8 @@ function serveStatic(req, res) {
     };
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
     const gzipOk = isText && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
-    if (!gzipOk) { res.writeHead(200, headers); return fs.createReadStream(filePath).pipe(res); }
+    // pipeline: إن قطع المتصفح التنزيل يُغلق الملف، وخطأ القراءة لا يوقف الخادم (pipe وحده كان يترك الملف مفتوحاً)
+    if (!gzipOk) { res.writeHead(200, headers); return pipeline(fs.createReadStream(filePath), res, () => {}); }
     headers['Content-Encoding'] = 'gzip'; headers['Vary'] = 'Accept-Encoding';
     const hit = GZ_CACHE.get(filePath);
     if (hit && hit.etag === etag) { res.writeHead(200, headers); return res.end(hit.buf); }

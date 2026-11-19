@@ -30,6 +30,19 @@ const CONFIG = {
     'حيّاك الله. تبي تختبر معلوماتك في النزاهة؟ قل اختبرني.',
     'يا هلا ومرحبا. إذا الشاشة مشغولة، صوّر الرمز وكمّل معي على جوالك.',
   ],
+  /* v37: وضع lemon: لكل عبارة ترحيب مقطع قصير ولّده LemonSlice Studio مرة واحدة (صورة الانتظار نفسها + صوت نزيه نفسه)،
+     فيتحرك الوجه وقت الترحيب بلا جلسة ولا دقائق. المقطع مربوط بنص عبارته حرفياً: إن عُدّلت العبارة أعلاه لا يُشغَّل مقطعها
+     (تُنطق بالصوت فوق الصورة كما كان) حتى يُولَّد مقطع للنص الجديد ويُكتب هنا.
+     المقاطع تُحفظ في المتصفح يوماً كاملاً: إن استُبدل مقطع فغيّر رقم ‎?v=‎ في سطره، وإلا بقيت الشاشة على القديم.
+     ولّدها Studio من lemon-face.jpg نفسها (وهي صورة الانتظار أثناءها). فإن غُيّرت تلك الصورة: تُولَّد المقاطع من الجديدة،
+     وتُعطى الصورة اسماً جديداً (DEFAULT_POSTER في makeLemonAvatar، وقائمة pre في index.html) لأنها تُحفظ في المتصفح يوماً كاملاً. */
+  attractClips: {
+    'يا هلا والله ومرحبا. أنا نزيه، وش بغيت تعرف عن النزاهة يا بعد حيي؟': 'assets/lemon-welcome-1.mp4?v=37',
+    'حيّاك الله يا بعد حيي. عندك سؤال عن الرشوة أو البلاغات؟ قرّب واسألني.': 'assets/lemon-welcome-2.mp4?v=37',
+    'يا هلا والله. جرّب معي مواقف وش تسوي لو، وشف كيف تتصرف صح.': 'assets/lemon-welcome-3.mp4?v=37',
+    'حيّاك الله. تبي تختبر معلوماتك في النزاهة؟ قل اختبرني.': 'assets/lemon-welcome-4.mp4?v=37',
+    'يا هلا ومرحبا. إذا الشاشة مشغولة، صوّر الرمز وكمّل معي على جوالك.': 'assets/lemon-welcome-5.mp4?v=37',
+  },
   openingSpeech:               // كلمة الافتتاح الافتراضية (تُعدَّل من الإعدادات على الشاشة الرئيسية وتُحفظ في ذلك الجهاز)
     'بسم الله الرحمن الرحيم. السلام عليكم ورحمة الله وبركاته. يا هلا والله ومرحبا براعي الحفل، وبأصحاب السعادة، وبالحضور الكريم. '
     + 'أنا نزيه، المساعد الافتراضي لجامعة حائل في اليوم العالمي لمكافحة الفساد، الذي تنظمه الجامعة بالتعاون مع هيئة الرقابة ومكافحة الفساد. '
@@ -667,7 +680,9 @@ function setMic(open) {
 /* ---------------- النطق ---------------- */
 const ttsCache = new Map();   // المقاطع المنطوقة تُحفظ فتصير الإجابات الجاهزة فورية في المرة التالية
 let speakSeq = 0;
+let welcomeClip = null;       // v37: مقطع الترحيب المتحرك (وضع lemon)، يُجهَّز مع شاشة الترحيب أسفل الملف
 function stopSpeaking() {
+  welcomeClip?.stop();
   speakSeq++; if (speakingNow) { speakingNow = false; lastSpokeAt = performance.now(); }
   if (did) { try { Promise.resolve(did.functions.interrupt()).catch(() => {}); } catch {} return; }
   if (currentSrc) { try { currentSrc.stop(); } catch {} currentSrc = null; }
@@ -977,12 +992,17 @@ function makeLemonAvatar(own) {
   video.addEventListener('resize', markShape); video.addEventListener('loadedmetadata', markShape);
   /* ---- صورة الشخصية أثناء الاتصال: لقطة من الوجه الحي نفسه في هذا الجهاز إن وُجدت، وإلا الصورة المرفقة مع الموقع ---- */
   const PKEY = 'nazih.lposter', DEFAULT_POSTER = 'assets/lemon-face.jpg';       // لقطة من الوجه الحي نفسه
+  /* v37: على الشاشة التي تُشغّل مقاطع الترحيب تبقى صورة الانتظار lemon-face.jpg: المقاطع وُلّدت منها فتبدأ وتنتهي عليها تماماً،
+     ولقطة الجهاز تختلف عنها قليلاً فيقفز الوجه عند بداية كل مقطع ونهايته. makeWelcomeClip يطلب ذلك (pinPoster) حين تعمل المقاطع فقط،
+     ولقطة الجهاز المحفوظة لا تُحذف. وlemon-face.jpg نفسها لقطة كاملة من الوجه الحي (النسبة والإطار نفساهما). */
+  let pinned = false;
   function setPoster(url) { if (!poster) return; poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
   poster?.addEventListener('load', () => { if (!video.videoWidth) setAR(poster.naturalWidth, poster.naturalHeight); });
   poster?.addEventListener('error', () => { if (!poster.src.endsWith(DEFAULT_POSTER)) { try { localStorage.removeItem(PKEY); } catch {} setPoster(DEFAULT_POSTER); } });
   let saved = null; try { saved = localStorage.getItem(PKEY); } catch {}
   setPoster(saved || DEFAULT_POSTER);
   function grabPoster(tries = 12) {
+    if (pinned) return;
     try {
       const w = video.videoWidth, h = video.videoHeight;
       if (w && h) {
@@ -1176,6 +1196,7 @@ function makeLemonAvatar(own) {
   const warm = (text) => { api('/api/tts-pcm', { text, screen: true, warm: true }).catch(() => {}); };
   return {
     own: true, simli: true, lemon: true,
+    pinPoster() { pinned = true; setPoster(DEFAULT_POSTER); },          // v37: انظر pinned أعلاه
     events: own.events,
     /* من فتح الصفحة (مجاناً، بلا جلسة): تنزيل مكتبة LiveKit وتسخين الاتصال بخادمها (DNS وTLS واختيار أقرب منطقة) */
     ensure: connect, preload() { loadSdk().then((m) => { if (window.NAZIH_LK_URL && !preRoom && m.Room) { try { preRoom = new m.Room(); Promise.resolve(preRoom.prepareConnection?.(window.NAZIH_LK_URL)).catch(() => {}); } catch {} } }).catch(() => {}); },
@@ -2049,7 +2070,8 @@ function sttVerdict(text, conf, meta = {}) {
   if (ws.length >= 3 && ws.filter((w) => STT_PROMPT_WORDS.has(w)).length / ws.length >= 0.8 && !ASKING.test(n)) return 'noise';   // كتب النموذج قائمة المفردات نفسها
   /* صوت نزيه الراجع: يُفحص فقط في تسجيل بدأ ونزيه يتكلم (المقاطعة بالصوت)، لأنه وحده يمكن أن يحوي صوته (بعد سكوته يُقفل المايك 0.8 ثانية).
      ويلزم دليل قوي: ثلاث كلمات متتالية من كلامه بالترتيب في 70% من النص فأكثر، ولا يبدأ بأداة سؤال. فالسؤال الذي يقتبس كلامه يُجاب */
-  if (meta.nearTalk && recentSaid && !ASK_START.test(n)) {
+  // v37: وشاشة الترحيب فاضية يُفحص الصدى حتى لو بدأ النص بأداة سؤال («وش بغيت تعرف…» من عبارة الترحيب نفسها)، فلا يفتح صوت نزيه جلسة مدفوعة
+  if (meta.nearTalk && recentSaid && (attractOn || !ASK_START.test(n))) {
     const said = words3(recentSaid);
     if (ws.length >= 4) { const sg = trigrams(said), mine = [...trigrams(ws)], hit = mine.filter((g) => sg.has(g)).length; if (hit >= Math.min(3, mine.length) && hit / mine.length >= 0.7) return 'echo'; }
     else if (ws.length && inOrder(ws, said)) return 'echo';
@@ -2562,12 +2584,139 @@ function initScreen() {
     $$('.qr-code').forEach((el) => { el.innerHTML = svg; });
   } catch (e) { console.warn('QR:', e?.message); document.body.classList.add('no-qr'); }
 }
+/* v37: ترحيب متحرك في وضع lemon بلا جلسة (ملاحظة المشرف: الوجه لا يتحرك أثناء الترحيب).
+   عبارات الترحيب على شاشة الانتظار كانت تُنطق فوق صورة الشخصية الثابتة، حتى لا تُفتح جلسة LemonSlice وتُحسب دقائق والشاشة فاضية.
+   الآن لكل عبارة مقطع قصير ولّده LemonSlice Studio مرة واحدة من صورة الانتظار نفسها وصوت نزيه نفسه (CONFIG.attractClips)،
+   يظهر مكان الصورة بالمقاس والمكان نفسيهما وقت العبارة ثم تعود الصورة. لا جلسة ولا دقائق.
+   - المقاطع تُنزَّل مرة بعد فتح الصفحة بثوانٍ (الشاشة الرئيسية في وضع lemon فقط) وتبقى في ذاكرة الصفحة، فلا تنتظر الشبكة وقت الترحيب.
+   - الصوت يمر بمسار صوت نزيه نفسه (التكبير نفسه، ومقياس المايك يعرف أن نزيه يتكلم فلا يسمع نفسه، ومرشّح الصدى يعرف كلماتها).
+   - أي لمسة أو كلام من الزائر يوقف المقطع فوراً (stopSpeaking)، ثم يتصل الوجه الحي كما كان.
+   - إن لم يجهز المقطع، أو كان الصوت مقفلاً لأن الجهاز لم يُلمس بعد، أو تعذّر تشغيله، تُنطق العبارة فوق الصورة كما كان.
+   - «نطق الإجابات بالصوت» مطفأ: لا مقطع ولا صوت، كما كان.
+   - صورة الانتظار تبقى lemon-face.jpg، الصورة التي وُلّدت منها المقاطع (pinPoster في makeLemonAvatar).
+   - قبل أول لمسة لا تُنطق عبارات الترحيب ولا تُشغَّل المقاطع (المتصفح يمنع الصوت)؛ تبقى الدعوة مكتوبة. */
+function makeWelcomeClip() {
+  const map = CONFIG.attractClips || {};
+  if (!window.NAZIH_LEMON || !SCREEN || !CONFIG.attract || !Object.keys(map).length) return null;
+  const host = $('#simliWait'), poster = $('#simliPoster');
+  if (!host) return null;
+  try { window.DID_AGENTS_API?.pinPoster?.(); } catch {}        // صورة الانتظار = الصورة التي وُلّدت منها المقاطع
+  const v = document.createElement('video');
+  v.id = 'lemonClip'; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto'; v.disablePictureInPicture = true;
+  if (poster) poster.after(v); else host.prepend(v);
+  const urls = new Map(), dead = new Set();      // dead: مقطع لا يُطلب ولا يُشغَّل بعد الآن (ملف مفقود، أو تالف لا يعمل)
+  let node = null, on = false, playSeq = 0, guardT = 0, unloadT = 0, ctrl = null, proven = false;
+  /* مكان المقطع: Studio يكبّر صورة الانتظار إلى ارتفاع المقطع كاملاً ويقص من الجانبين قليلاً (قيس على مقاطع 1080p ‏1080×1890:
+     الارتفاع كاملاً ×2.261، وقص 45 بكسلاً من كل جانب، وإزاحة رأسية 4.5 بكسل من 1890 — النسبة نفسها في المقطع العادي 384×672).
+     فالمقطع يُعرض بارتفاع الصورة المعروضة نفسه ومركزها نفسه، ويُقص على حدود الصورة، فيقع الوجه على الوجه تماماً في كل مقاس
+     (لا يُمدَّد ليملأ الإطار، وإلا كبر الوجه 8٪ وقفز). */
+  const CLIP_DY = 4.5 / 1890;
+  function place() {
+    if (!poster || !poster.naturalWidth || !v.videoWidth) return false;
+    const pr = poster.getBoundingClientRect(), hr = host.getBoundingClientRect();
+    if (!pr.width || !pr.height) return false;
+    const s = Math.max(pr.width / poster.naturalWidth, pr.height / poster.naturalHeight);       // الصورة: object-fit:cover في الوسط
+    const h = poster.naturalHeight * s, w = h * v.videoWidth / v.videoHeight;
+    const left = pr.left - hr.left + (pr.width - w) / 2, top = pr.top - hr.top + (pr.height - h) / 2 + h * CLIP_DY;
+    const bl = pr.left - hr.left, bt = pr.top - hr.top;
+    const cut = [Math.max(0, bt - top), Math.max(0, left + w - (bl + pr.width)), Math.max(0, top + h - (bt + pr.height)), Math.max(0, bl - left)];
+    Object.assign(v.style, { left: left + 'px', top: top + 'px', width: w + 'px', height: h + 'px', right: 'auto', bottom: 'auto', transform: 'none', maxWidth: 'none', objectFit: 'fill',
+      clipPath: `inset(${cut.map((x) => x.toFixed(1) + 'px').join(' ')})` });
+    return true;
+  }
+  addEventListener('resize', () => { if (on) place(); });
+  /* التنزيل: نحو 5 ميغابايت لكل مقطع (1080p ‏H.264)، واحداً واحداً وشاشة الترحيب فاضية فقط.
+     إن جاء زائر أثناء تنزيل مقطع يُلغى فوراً (halt من leaveAttract) حتى لا يزاحم الوجه الحي، ويُعاد في الخمول التالي.
+     وما فشل تنزيله لانقطاع الشبكة أو لأن الخادم يُعاد تشغيله يُعاد بلا حد، بمهلة تزيد حتى 5 دقائق؛ أما الملف المفقود (4xx) فثلاث مرات ثم يُترك. */
+  const whenIdle = () => new Promise((ok) => { const t = setInterval(() => { if (attractOn) { clearInterval(t); ok(); } }, 2000); });
+  setTimeout(async () => {
+    const tries = new Map();
+    for (;;) {
+      const todo = Object.entries(map).filter(([text]) => !urls.has(text) && !dead.has(text));
+      if (!todo.length) return;
+      let worst = 0;
+      for (const [text, src] of todo) {
+        if (!attractOn) await whenIdle();
+        if (dead.has(text)) continue;
+        const c = ctrl = new AbortController();
+        try {
+          const r = await fetch(src, { signal: c.signal });
+          if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
+          urls.set(text, URL.createObjectURL(await r.blob()));
+        } catch (e) {
+          if (!c.signal.aborted) {          // الإلغاء لأن زائراً جاء ليس فشلاً
+            const n = (tries.get(text) || 0) + 1; tries.set(text, n); worst = Math.max(worst, n);
+            if (e?.status >= 400 && e?.status < 500 && n >= 3) dead.add(text);
+            console.warn('welcome clip:', src, e?.message);
+          }
+        } finally { if (ctrl === c) ctrl = null; }
+      }
+      if (worst) await sleep(Math.min(300000, worst * 30000));
+    }
+  }, 3000);
+  function finish(natural) {
+    if (!on) return;
+    on = false; v.onended = v.onerror = v.onpause = null; clearTimeout(guardT);
+    document.body.classList.remove('lemon-clip');
+    try { v.pause(); } catch {}
+    // يُفرَّغ المقطع بعد اختفائه (0.2 ثانية)، فلا يكمله زر تشغيل في لوحة المفاتيح أو أدوات الوسائط في الجهاز دون أن يُرى
+    clearTimeout(unloadT); unloadT = setTimeout(() => { if (!on) { try { v.removeAttribute('src'); v.load(); } catch {} } }, 250);
+    if (speakingNow) { speakingNow = false; lastSpokeAt = performance.now(); }
+    setTalking(false);
+    if (natural) resetIdle(attractOn);       // مثل نهاية عبارة الترحيب المنطوقة: لا تُنهي شاشة الترحيب
+  }
+  // Safari (آيباد): لا يُشغَّل الفيديو بصوت إلا بعد لمسة وهو موجود؛ فكل لمسة أو نقرة أو زر (والمقطع متوقف) تجهّزه، إلى أن يشتغل أول مقطع فعلاً
+  const GESTURES = ['pointerdown', 'touchend', 'click', 'keydown'];
+  const unlock = () => { if (!on) try { v.load(); } catch {} };
+  GESTURES.forEach((ev) => addEventListener(ev, unlock, { passive: true }));
+  const unlocked = () => { if (proven) return; proven = true; GESTURES.forEach((ev) => removeEventListener(ev, unlock, { passive: true })); };
+  return {
+    play(text) {
+      const url = urls.get(text);
+      if (!url || !settings.voice) return false;     // «نطق الإجابات بالصوت» مطفأ: تبقى الصورة ساكنة صامتة كما كانت (makeSpeaker لا ينطق شيئاً)
+      ensureAudio();            // مثل نطق العبارة نفسها: إن كان المتصفح لا يسمح بالصوت قبل أول لمسة يبقى موقوفاً، فتُنطق/تُكتب العبارة كما كانت
+      if (!audioCtx || audioCtx.state !== 'running') return false;
+      try { if (!node) { node = audioCtx.createMediaElementSource(v); node.connect(analyser); } } catch (e) { console.warn('welcome clip audio:', e?.message); return false; }
+      stopSpeaking();
+      noteSaid(text);           // مثل speak(): مرشّح الصدى يعرف كلمات العبارة، فلا يُحسب صوتها الراجع من السماعة سؤال زائر (وإلا فُتحت جلسة مدفوعة والشاشة فاضية)
+      on = true; speakingNow = true;                   // «يتكلم» (setTalking) حين يبدأ المقطع فعلاً، فلا تومض شارة «يتكلم» قبل ظهوره
+      const my = ++playSeq; let started = false;       // my: نتيجة تشغيل قديم (أُوقف ثم بدأ غيره) لا تؤثر في الجديد
+      const fail = (e) => {      // تعذّر التشغيل: تُنطق العبارة فوق الصورة كما كانت، والمقطع التالف لا يُعاد (أما منع المتصفح للصوت فيُجرَّب بعد لمسة)
+        if (!on || my !== playSeq) return;
+        console.warn('welcome clip play:', [e?.name, e?.message || e?.type].filter(Boolean).join(': ') || e);
+        if (started && v.currentTime > 0.3) return finish(true);       // سُمع جزء من العبارة: لا تُكرَّر
+        finish(false);
+        if (e?.name !== 'NotAllowedError') { urls.delete(text); dead.add(text); URL.revokeObjectURL(url); }
+        if (attractOn) speak(text);
+      };
+      v.onended = v.onpause = () => finish(true);      // pause: إيقاف من خارج الصفحة (أزرار الوسائط) لا يترك نزيه «يتكلم» بلا نهاية
+      v.onerror = fail;
+      clearTimeout(unloadT); clearTimeout(guardT);
+      guardT = setTimeout(() => { if (on && my === playSeq) { if (started) finish(true); else fail(new Error('stalled')); } }, 20000);   // أطول مقطع 7.3 ثانية
+      v.src = url;
+      // يظهر المقطع حين يبدأ فعلاً (أول صورة فيه هي صورة الانتظار نفسها، فلا يتغير المشهد). إن تعذّر حساب مكانه يبقى مخفياً ويُسمع الصوت فقط كما كان
+      Promise.resolve(v.play()).then(() => {
+        started = true; unlocked();
+        if (on && my === playSeq) { if (place()) document.body.classList.add('lemon-clip'); setTalking(true); }
+      }).catch(fail);
+      return true;
+    },
+    stop() { finish(false); },
+    halt() { ctrl?.abort(); },          // زائر جاء: يُلغى تنزيل المقطع الجاري (يُعاد في الخمول التالي)
+  };
+}
+welcomeClip = makeWelcomeClip();
 function attractSay() {
   clearTimeout(attractT);
   if (!attractOn) return;
   attractT = setTimeout(attractSay, CONFIG.attractEverySeconds * 1000);
   if (busy || recState || speakingNow || didTalking || autoMic?.active || document.hidden) return;
-  speak(CONFIG.attractLines[attractI++ % CONFIG.attractLines.length]);       // إن لم يُلمس الجهاز بعد فتح الصفحة يمنع المتصفح الصوت، فتبقى الدعوة مكتوبة فقط
+  const line = CONFIG.attractLines[attractI++ % CONFIG.attractLines.length];
+  /* v37: صوت نزيه يمر بالصفحة نفسها: قبل أول لمسة يمنع المتصفح الصوت، فتبقى الدعوة مكتوبة فقط.
+     (كانت العبارة تُرسل صامتة فيعلق نزيه «يتكلم» ويسكت الترحيب، ثم تُسمع العبارة دفعة واحدة عند أول لمسة) */
+  if (!did || did.own) { ensureAudio(); if (audioCtx.state !== 'running') return; }
+  if (welcomeClip?.play(line)) return;      // v37: وضع lemon: الوجه يتحرك بمقطع الترحيب المسجّل
+  speak(line);       // إن لم يُلمس الجهاز بعد فتح الصفحة يمنع المتصفح الصوت، فتبقى الدعوة مكتوبة فقط
 }
 function enterAttract() {
   if (!SCREEN || !CONFIG.attract || attractOn) return;
@@ -2578,6 +2727,7 @@ function enterAttract() {
 function leaveAttract() {
   if (!attractOn) return;
   attractOn = false; clearTimeout(attractT); document.body.classList.remove('attract'); attractEl.hidden = true;
+  welcomeClip?.halt();                                // v37: لا يزاحم تنزيل مقطع ترحيب الوجه الحي
   if (speakingNow) stopSpeaking();
 }
 attractEl?.addEventListener('click', () => { ensureAudio(); });

@@ -435,6 +435,11 @@ body.lemon #simliWait{background:#e6dccf}
 body.lemon .sw-card{display:none}                        /* لا دائرة تحميل: تظهر صورة الشخصية الجديدة نفسها حتى يتصل الوجه */
 body.lemon #simliPoster{object-position:50% 50%}
 body.lemon #simliVideo{object-position:50% 40%}
+/* v37: ترحيب متحرك بلا جلسة: مقطع مسجّل مرة واحدة من صورة الانتظار نفسها (LemonSlice Studio) يظهر فوقها بالمقاس والمكان نفسيهما
+   وقت عبارة الترحيب، ثم تعود الصورة. انظر attractClips و makeWelcomeClip في app.js */
+#lemonClip{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 50%;opacity:0;transition:opacity .2s;pointer-events:none;z-index:1}     /* مكانه ومقاسه الدقيقان يُحسبان من الصورة نفسها (place في app.js) */
+body.lemon-clip #lemonClip{opacity:1}
+body.lemon-clip .talk-badge{display:none}                /* الوجه نفسه يتكلم في المقطع، فلا حاجة لشارة «يتكلم» (مثل الوجه الحي) */
 /* الجوال الطولي (أضيق من 600 بكسل) لا يدخل هنا مهما كانت نسبة مكان الشخصية، فيبقى شكله كما كان */
 @media (min-width:600px),(min-aspect-ratio:1/1){
 @container (min-aspect-ratio:7/10){
@@ -442,7 +447,7 @@ body.lemon #simliVideo{object-position:50% 40%}
     --vh:calc(100cqb - var(--hdr,0px));--vw:calc(var(--vh) * var(--lemon-ar,.62));--lside:calc((100cqi - var(--vw)) / 2)}
   body.lemon #simliBox::before{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,#e6dccf 0%,#e6dbce 30%,#e2d6c6 42%,#e9e5ea 60%,#e7e3ea 86%,#d4cdd2 100%)}
   body.lemon #simliWait{background:transparent}
-  body.lemon #simliVideo,body.lemon #simliPoster{position:absolute;z-index:1;top:var(--hdr,0px);left:50%;right:auto;bottom:auto;transform:translateX(-50%);height:var(--vh);width:var(--vw);max-width:none;object-fit:cover;object-position:50% 50%;
+  body.lemon #simliVideo,body.lemon #simliPoster,body.lemon #lemonClip{position:absolute;z-index:1;top:var(--hdr,0px);left:50%;right:auto;bottom:auto;transform:translateX(-50%);height:var(--vh);width:var(--vw);max-width:none;object-fit:cover;object-position:50% 50%;
     -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%)}
   body.lemon #simliWait{z-index:1}
   /* الشعاران على بطاقتين واضحتين في منتصف كل جانب، على مستوى الوجه تقريباً، ولا يقتربان من الفيديو */
