@@ -359,6 +359,10 @@ body.screen.attract #attract:not([hidden]){display:flex;position:absolute;z-inde
 .attract-qr span{font-size:calc(2.5*var(--u));font-weight:700;color:var(--green);text-align:center;line-height:1.5}
 body.no-qr .attract-qr{display:none}
 body.attract #caption,body.attract .mic-zone,body.attract .ptt-label{visibility:hidden}
+/* v35: «اضغط وتكلّم» (‎?ptt=1‎): دعوة الترحيب تقول «اضغط زر المايك مع الاستمرار»، فيبقى الزر ظاهراً فوقها */
+body.hold.attract .mic-zone,body.hold.attract .ptt-label{visibility:visible}
+body.hold.attract .lower{z-index:8}
+body.attract .status.err{display:none}      /* لا تظهر رسالة خطأ فوق بطاقة الترحيب؛ أي لمسة تخرج من الترحيب فتظهر الرسالة */
 @media (max-aspect-ratio:1/1){ .attract-card{flex-direction:column;text-align:center;gap:calc(2.4*var(--u))} .attract-qr{width:calc(36*var(--u))} }
 @media (min-aspect-ratio:1/1){ body.screen:not(.no-qr) #qrBadge{top:calc(14*var(--u));width:calc(18*var(--u))} }
 body.did-on.ptt #scn{padding-bottom:calc(24*var(--u))}
@@ -420,3 +424,41 @@ dialog .row select{font:inherit;font-size:.95em;padding:8px 10px;border-radius:1
 @media (min-aspect-ratio:1/1) and (max-height:479px){
   body.simli:not(.simli-off) .top .logo{display:block;height:calc(11*var(--u));width:calc(13*var(--u))}
 }
+
+/* ---------- v35: وجه LemonSlice (‎/?avatar=lemon‎) ----------
+   فيديو LemonSlice طولي (نحو 756×1220). على الجوال الطولي يبقى كما هو (يملأ الشاشة)، لأن شكله هناك ممتاز.
+   حين يكون مكان الشخصية أعرض من الفيديو بوضوح (آيباد، لابتوب، شاشة عرض) يُعرض الفيديو بارتفاع المكان كاملاً في الوسط بلا أي قص،
+   ويمتلئ الجانبان بخلفية من مشهد الشخصية نفسه (مكتبة نزيه الجديد) مضبّبة حتى تتصل ألوانها بالفيديو، والشعاران يمين ويسار الشخصية.
+   --lemon-ar: نسبة عرض الفيديو إلى ارتفاعه (تُحدَّث من الفيديو نفسه)، --hdr: أسفل الشريط العلوي (حتى لا يغطي الرأس). */
+body.lemon #simliWait{background:#e8dccb}
+body.lemon .sw-card{display:none}                        /* لا دائرة تحميل: تظهر صورة الشخصية الجديدة نفسها حتى يتصل الوجه */
+body.lemon #simliPoster{object-position:50% 50%}
+body.lemon #simliVideo{object-position:50% 40%}
+/* الجوال الطولي (أضيق من 600 بكسل) لا يدخل هنا مهما كانت نسبة مكان الشخصية، فيبقى شكله كما كان */
+@media (min-width:600px),(min-aspect-ratio:1/1){
+@container (min-aspect-ratio:7/10){
+  body.lemon #simliBox{left:0;transform:none;width:100%;overflow:hidden;
+    --vh:calc(100cqb - var(--hdr,0px));--vw:calc(var(--vh) * var(--lemon-ar,.62));--lside:calc((100cqi - var(--vw)) / 2)}
+  body.lemon #simliBox::before{content:"";position:absolute;inset:-8%;z-index:0;background:#cdb99c url(../assets/lemon-bg.jpg) center/cover no-repeat;filter:blur(calc(2.2*var(--u))) saturate(1.05) brightness(.93)}
+  body.lemon #simliWait{background:transparent}
+  body.lemon #simliVideo,body.lemon #simliPoster{position:absolute;z-index:1;top:var(--hdr,0px);left:50%;right:auto;bottom:auto;transform:translateX(-50%);height:var(--vh);width:var(--vw);max-width:none;object-fit:cover;object-position:50% 50%;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%)}
+  body.lemon #simliWait{z-index:1}
+  /* الشعاران على بطاقتين واضحتين في منتصف كل جانب، على مستوى الوجه تقريباً، ولا يقتربان من الفيديو */
+  body.lemon #simliBox .wall-logo,body.lemon #simliBox.tall .wall-logo{display:block;position:absolute;z-index:2;mix-blend-mode:normal;object-fit:contain;
+    top:calc(var(--hdr,0px) + var(--vh) * .3);width:min(calc(var(--lside) * .62),calc(30*var(--u)));height:auto;max-height:calc(var(--vh) * .34);
+    padding:calc(1.6*var(--u));border-radius:calc(3*var(--u));background:rgba(255,255,255,.9);box-shadow:0 calc(.8*var(--u)) calc(3*var(--u)) rgba(40,30,15,.22)}
+  body.lemon #simliBox .wl-uoh{right:calc(var(--lside) / 2);left:auto;transform:translateX(50%)}
+  body.lemon #simliBox .wl-nazaha{left:calc(var(--lside) / 2);right:auto;transform:translateX(-50%)}
+}
+/* جانب ضيق جداً (أقل من 13 وحدة): الشعاران يرجعان إلى الشريط العلوي بدل أن يزاحما الوجه */
+@container (min-aspect-ratio:7/10) and (max-aspect-ratio:9/10){
+  body.lemon #simliBox .wall-logo,body.lemon #simliBox.tall .wall-logo{display:none}
+}
+}
+@media (max-aspect-ratio:1/1){ body.lemon .top .logo{display:block} }
+@media (min-aspect-ratio:1/1) and (max-height:479px){ body.lemon #simliBox .wall-logo{display:none!important} body.lemon .top .logo{display:block;height:calc(11*var(--u));width:calc(13*var(--u))} }
+
+/* ---------- v35: «اضغط وتكلّم» (‎?ptt=1‎): زر المايك يُضغط مع الاستمرار، فلا تظهر قائمة اللمس الطويل ولا يتحدد النص ---------- */
+body.hold .mic-btn{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+body.hold .mic-btn.listening{transform:scale(1.08)}

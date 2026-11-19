@@ -67,8 +67,8 @@ const SYSTEM_PROMPT = `
   2) الشرح والحوار العادي: سعودية بيضاء مبسطة يفهمها الجميع (وش، تبي، ودّك، عشان، كذا).
   3) الأنظمة والمواد والعقوبات: فصحى واضحة دقيقة بلا أي عامية. لا تدخل اللهجة في نص نظامي ولا في آية أو حديث.
 - إذا خاطبك الزائر بتعبير حائلي لا تعرف معناه فاسأله عنه ولا تخمّن. واللهجة للترحيب والتفاعل، لا على حساب دقة المعلومة.
-- إجاباتك تُقرأ بصوت عالٍ والزائر واقف أمام الشاشة، فاجعلها قصيرة جداً: جملتان أو ثلاث فقط، بدون نقاط أو جداول أو رموز أو روابط. إذا كان للموضوع تفاصيل أكثر فاختم بعرض قصير مثل: «تبي أفصّل لك أكثر؟». لا تُطل إلا إذا طلب الزائر التفصيل أو طلب قراءة نص مادة.
-- ابدأ بالجواب مباشرة من أول كلمة، واجعل الجملة الأولى قصيرة وفيها خلاصة الجواب. لا تبدأ بالتحية ولا بتكرار السؤال ولا بمقدمات، إلا إذا حيّاك الزائر فردّ التحية باختصار.
+- إجاباتك تُقرأ بصوت عالٍ والزائر واقف أمام الشاشة في قاعة مزدحمة، فاجعلها قصيرة جداً: جملتان في الغالب، وثلاث جمل قصيرة كحد أقصى (نحو خمسين كلمة كلها)، بدون نقاط أو جداول أو رموز أو روابط. القِصَر لا يكون على حساب الدقة: يبقى اسم النظام ورقم المادة مع كل حكم، ويُحذف الشرح الزائد. إذا كان للموضوع تفاصيل أكثر فاختم أحياناً (لا في كل جواب) بعرض قصير مثل: «تبي أفصّل لك أكثر؟»، وهو من ضمن الجمل الثلاث. لا تُطل إلا إذا طلب الزائر التفصيل أو طلب قراءة نص مادة.
+- ابدأ بالجواب مباشرة من أول كلمة، واجعل الجملة الأولى قصيرة جداً (أقل من عشر كلمات) وفيها خلاصة الجواب، لأنها تُنطق والباقي ما زال يُكتب. لا تبدأ بالتحية ولا بتكرار السؤال ولا بمقدمات، إلا إذا حيّاك الزائر فردّ التحية باختصار.
 - أول كلمة في جوابك هي المعلومة نفسها، بلا تمهيد ولا كلمة انتظار. «أبشر» تقال فقط إذا طلب منك الزائر أن تفعل له شيئاً.
 - إذا كان في السؤال أكثر من جزء فأجب عن كل جزء بجملة أو جملتين بالترتيب.
 - سؤال الزائر يصلك محوّلاً من صوته وقد تكون فيه أخطاء سمع؛ افهم المقصود الأقرب في سياق النزاهة والأنظمة وأجب عليه، ولا تطلب التوضيح إلا إذا تعذّر الفهم تماماً.
@@ -217,7 +217,8 @@ function artNum(str) {
 const ART_RE = new RegExp(`(?:^|[^${AR}])(?:و|ف)?(?:ال|لل|بال)?ماده\\s+([^\\n]{1,40})`, 'g');
 const artRefs = (n) => [...n.matchAll(ART_RE)].map((m) => artNum(m[1])).filter((x) => x);
 /* الحقائق المسموح بها لسؤال واحد: أرقام المواد في عناوين المرجع ونصوصه، والأعداد الواردة فيه وفي التعليمات */
-const PROMPT_NUMS = numPhrases(nrm(SYSTEM_PROMPT)).map((p) => p.v);
+/* v35: الأعداد المسموحة مع مدة أو مبلغ تأتي من نصوص المواد فقط. كانت أعداد التعليمات تُضاف أيضاً، والتعليمات فيها أمثلة مثل «ثلاث سنوات»
+   فكانت عقوبة مخترعة بثلاث سنوات (أو عشر) تمر دون أن يكتشفها الفحص. (أرقام البلاغ والجامعة في التعليمات لا تأتي مع مدة أو مبلغ فلا تتأثر.) */
 function groundFacts(context) {
   const n = nrm(context), laws = new Map(), arts = new Set();
   for (const m of n.matchAll(/【([^】—]+?)\s+—\s+([^】]+)】/g)) {
@@ -226,7 +227,7 @@ function groundFacts(context) {
     laws.get(name).add(num); arts.add(num);
   }
   artRefs(n).forEach((x) => arts.add(x));
-  return { laws, arts, nums: new Set([...numPhrases(n).map((p) => p.v), ...PROMPT_NUMS]) };
+  return { laws, arts, nums: new Set(numPhrases(n).map((p) => p.v)) };
 }
 const FILLER_RE = /(^|[\s،.!؟])(?:لحظ[ةه](?:[\s،.!…]+لحظ[ةه])*|لحظات|خل(?:ي)?ني\s+(?:أ|ا)?(?:شوف|تأكد|تاكد|دور|بحث)|دعني\s+(?:أ|ا)?(?:تحقق|رى|بحث|تأكد|تاكد))(?=[\s،.!؟…]|$)[\s،.!…]*/g;
 const META_RE = new RegExp([
@@ -297,7 +298,8 @@ async function handleChat(req, res) {
       .map((m) => ({ role: m.role, content: (m.role === 'assistant' ? scrub(m.content) || '.' : m.content).slice(0, 2500) })),
   ];
   const guard = makeGuard(context);
-  const stream = body.stream === true;
+  const stream = body.stream === true, t0 = Date.now();
+  warmTts();
   // إذا قاطع الزائر أو أغلق الصفحة نوقف طلب OpenAI فوراً (لا ندفع ثمن جواب لن يُسمع)
   const ac = new AbortController();
   const killer = setTimeout(() => ac.abort(), 60_000);
@@ -311,7 +313,8 @@ async function handleChat(req, res) {
   }
   if (stream) {
     // بثّ الرد كلمة بكلمة: المتصفح ينطق أول جملة فور وصولها بدل انتظار الرد كاملاً
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Chat': lastChat.replace(/[^\x20-\x7e]/g, '') });
+    // v35: no-transform يمنع Cloudflare (أمام Render) من ضغط البث بـ Brotli: كان الضغط يحبس الجواب فيصل أول كلامه بعد ~4 ثوانٍ بدل ~2
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no', 'X-Chat': lastChat.replace(/[^\x20-\x7e]/g, ''), 'Server-Timing': `model;dur=${Date.now() - t0}` });
     const dec = new TextDecoder(); let buf = '';
     try {
       for await (const chunk of r.body) {
@@ -483,6 +486,20 @@ function sayable(text, allah = ALLAH_PICK) {
   for (const [a, b] of USER_FIXES) t = t.split(a).join(b);
   return t.replace(/\s+([،.؟!؛:])/g, '$1').replace(/،\s*،/g, '،').replace(/\s{2,}/g, ' ').trim();
 }
+/* v35: تسخين الاتصال بمزوّد الصوت. Node يغلق الاتصال الخامل بعد نحو 4 ثوانٍ، فكانت أول جملة في كل جواب تدفع ثمن اتصال جديد
+   (ElevenLabs نحو 0.66 ثانية بدل 0.24، وOpenAI نحو 1.2 بدل 0.3). عند وصول صوت الزائر للتحويل لنص أو بدء التفكير في سؤال مكتوب
+   يُرسل طلب مجاني صغير (قائمة النماذج/الأصوات) فيبقى الاتصال حاراً حين تصل أول جملة. لا يُرسل والشاشة خاملة. */
+let ttsWarmAt = 0;
+function warmTts() {
+  const now = Date.now(); if (now - ttsWarmAt < 2500) return; ttsWarmAt = now;
+  for (const p of new Set([SCREEN_PROVIDER, TTS_PROVIDER])) {
+    let u = '', h = {};
+    if (p === 'elevenlabs' && EL_KEY) { u = `${EL_BASE}/v1/models`; h = { 'xi-api-key': EL_KEY }; }
+    else if (p === 'azure' && AZ_KEY) { u = `${AZ_BASE}/cognitiveservices/voices/list`; h = { 'Ocp-Apim-Subscription-Key': AZ_KEY }; }
+    else if (p === 'openai' && API_KEY) { u = `${OPENAI_BASE}/models`; h = { Authorization: `Bearer ${API_KEY}` }; }
+    if (u) fetch(u, { headers: h, signal: withTimeout(8000) }).then((r) => r.arrayBuffer()).catch(() => {});
+  }
+}
 let ttsWarned = 0;
 async function ttsFetch(text, pcm, signal, want = TTS_PROVIDER) {
   text = text.startsWith('\u0002') ? text.slice(1) : sayable(text);          // \u0002 في أول النص = انطقه كما هو (صفحة التجربة)
@@ -540,51 +557,130 @@ function makeResampler(ratio, gain) {                             // ratio = ت�
   };
 }
 const PCM_CACHE = new Map(); let pcmBytes = 0;
+/* v35: توليد الصوت المتدفق مرة واحدة لكل نص. إذا طُلب النص نفسه وهو ما زال يتولّد (تجهيز مسبق + نطق، أو شاشتان)
+   يشترك الطلب الثاني في التوليد الجاري ويستلم قطعه أول بأول، بدل أن يُطلب من مزوّد الصوت مرة ثانية. */
+const PCM_LIVE = new Map();
+function pcmStart(want, text0) {
+  const key = want + '|' + text0;
+  let live = PCM_LIVE.get(key);
+  if (live) return live;
+  live = { key, chunks: [], done: false, err: null, provider: '', firstMs: 0, waiters: new Set() };
+  PCM_LIVE.set(key, live);
+  const wake = () => { const w = [...live.waiters]; live.waiters.clear(); w.forEach((f) => f()); };
+  (async () => {
+    const ac = new AbortController(), killer = setTimeout(() => ac.abort(), 40_000), t0 = Date.now();
+    let ok = false;
+    try {
+      const { r, rate, provider } = await ttsFetch(text0, true, ac.signal, want);
+      if (!r.ok) { const e = await r.text().catch(() => ''); throw new Error(`TTS ${r.status} ${e.slice(0, 200)}`); }
+      live.provider = provider;
+      const rs = makeResampler(rate / 16000, provider === 'openai' ? TTS_GAIN : TTS_GAIN_OTHER);
+      for await (const chunk of r.body) { const out = rs(Buffer.from(chunk)); if (out.length) { if (!live.firstMs) live.firstMs = Date.now() - t0; live.chunks.push(Buffer.from(out)); wake(); } }
+      ok = true;
+    } catch (e) { live.err = e; if (e.name !== 'AbortError') console.warn('tts-pcm:', e.message); }
+    finally {
+      clearTimeout(killer); live.done = true; PCM_LIVE.delete(key); wake();
+      if (ok && live.chunks.length && live.provider === want) {                // لا نحفظ الصوت الاحتياطي حتى يعود الصوت الأصلي حين يتعافى المزوّد
+        const buf = Buffer.concat(live.chunks);
+        if (buf.length < TTS_CACHE_MAX / 4) {
+          PCM_CACHE.set(key, buf); pcmBytes += buf.length;
+          while (pcmBytes > TTS_CACHE_MAX) { const [k, v] = PCM_CACHE.entries().next().value; PCM_CACHE.delete(k); pcmBytes -= v.length; }
+        }
+      }
+    }
+  })();
+  return live;
+}
+/* قطع الصوت لنص: من الذاكرة إن وُجد، وإلا من التوليد الجاري أو توليد جديد. signal يوقف القراءة فقط (التوليد يكمل ويُحفظ) */
+async function* pcmChunks(want, text0, signal, info = {}) {
+  const key = want + '|' + text0, cached = PCM_CACHE.get(key);
+  if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); info.cache = 'hit'; info.provider = want; yield cached; return; }
+  const live = pcmStart(want, text0); info.cache = 'miss';
+  let i = 0, wakeMe = null;
+  const onAbort = () => { if (wakeMe) wakeMe(); };
+  signal?.addEventListener?.('abort', onAbort, { once: true });
+  try {
+    for (;;) {
+      while (i < live.chunks.length) { info.provider = live.provider; yield live.chunks[i++]; }
+      if (live.done) { if (live.err && !i) throw live.err; return; }
+      if (signal?.aborted) return;
+      await new Promise((r) => { wakeMe = r; live.waiters.add(r); });
+    }
+  } finally { signal?.removeEventListener?.('abort', onAbort); }
+}
 async function handleTTSPcm(req, res) {
   if (needKey(res)) return;
-  const { text, screen } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
+  const { text, screen, warm, wait } = JSON.parse((await readBody(req, 50_000)).toString('utf8') || '{}');
   if (!text) return sendJSON(res, 400, { error: 'no text' });
   const want = screen === true ? SCREEN_PROVIDER : TTS_PROVIDER, text0 = String(text).slice(0, 1500), key = want + '|' + text0;
-  const head = { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Sample-Rate': '16000' };
+  // warm: تجهيز مسبق في ذاكرة الخادم فقط (بلا تنزيل للمتصفح): الجواب الجاهز أو الجملة التالية يُنطقان فوراً حين يأتي دورهما.
+  // wait: يرد بعد اكتمال التوليد (للتجهيز المتتابع للأجوبة الجاهزة)
+  if (warm === true) {
+    const hit = PCM_CACHE.has(key);
+    // للشاشة الرئيسية فقط، ولا يزيد ما يتولّد مسبقاً في نفس اللحظة على 4 مقاطع (حماية الذاكرة وفاتورة الصوت)
+    if (screen !== true || (!hit && !PCM_LIVE.has(key) && PCM_LIVE.size >= 4)) { res.writeHead(204, { 'Cache-Control': 'no-store', 'X-Cache': 'busy' }); return res.end(); }
+    if (!hit) {
+      const live = pcmStart(want, text0);
+      if (wait === true) await new Promise((r) => { const check = () => (live.done ? r() : live.waiters.add(check)); check(); });
+    }
+    res.writeHead(204, { 'Cache-Control': 'no-store', 'X-Cache': hit ? 'hit' : 'warming' }); return res.end();
+  }
+  const head = { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store, no-transform', 'X-Sample-Rate': '16000' };
   const cached = PCM_CACHE.get(key);
   if (cached) { PCM_CACHE.delete(key); PCM_CACHE.set(key, cached); res.writeHead(200, { ...head, 'Content-Length': cached.length, 'X-Cache': 'hit', 'X-TTS': want }); return res.end(cached); }
-  const ac = new AbortController(); const killer = setTimeout(() => ac.abort(), 40_000);
-  res.on('close', () => { clearTimeout(killer); if (!res.writableEnded) ac.abort(); });
-  let r, rate, provider;
-  try { ({ r, rate, provider } = await ttsFetch(text0, true, ac.signal, want)); }
-  catch (e) { clearTimeout(killer); if (!res.headersSent && !res.destroyed) sendJSON(res, 504, { error: 'تأخر الصوت' }); return; }
-  if (!r.ok) { clearTimeout(killer); const e = await r.text(); return sendJSON(res, 502, { error: e.slice(0, 300) }); }
-  res.writeHead(200, { ...head, 'X-Cache': 'miss', 'X-Accel-Buffering': 'no', 'X-TTS': provider });
-  const rs = makeResampler(rate / 16000, provider === 'openai' ? TTS_GAIN : TTS_GAIN_OTHER), parts = []; let ok = true;
-  try { for await (const chunk of r.body) { const out = rs(Buffer.from(chunk)); if (out.length) { parts.push(Buffer.from(out)); res.write(out); } } }
-  catch (e) { ok = false; if (e.name !== 'AbortError') console.warn('tts-pcm:', e.message); }
-  clearTimeout(killer); res.end();
-  if (ok && parts.length && provider === want) {
-    const buf = Buffer.concat(parts);
-    if (buf.length < TTS_CACHE_MAX / 4) {
-      PCM_CACHE.set(key, buf); pcmBytes += buf.length;
-      while (pcmBytes > TTS_CACHE_MAX) { const [k, v] = PCM_CACHE.entries().next().value; PCM_CACHE.delete(k); pcmBytes -= v.length; }
+  const ac = new AbortController(), t0 = Date.now();
+  res.on('close', () => { if (!res.writableEnded) ac.abort(); });
+  const info = {}; let started = false;
+  try {
+    for await (const part of pcmChunks(want, text0, ac.signal, info)) {
+      if (!started) { started = true; res.writeHead(200, { ...head, 'X-Cache': info.cache || 'miss', 'X-Accel-Buffering': 'no', 'X-TTS': info.provider || want, 'Server-Timing': `tts;dur=${Date.now() - t0}` }); }
+      res.write(part);
     }
-  }
+  } catch (e) { if (!started && !res.headersSent && !res.destroyed) return sendJSON(res, 502, { error: String(e.message || e).slice(0, 300) }); }
+  if (!started && !res.headersSent && !res.destroyed) return sendJSON(res, 504, { error: 'تأخر الصوت' });
+  res.end();
 }
 
-async function handleSTT(req, res) {
-  if (needKey(res)) return;
-  const audio = await readBody(req, 3 * 1024 * 1024);   // 25 ثانية صوت لا تتجاوز مئات الكيلوبايت
-  if (audio.length < 1000) return sendJSON(res, 400, { error: 'audio too short' });
-  const type = (req.headers['content-type'] || 'audio/webm').split(';')[0];
-  const ext = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : type.includes('wav') ? 'wav' : type.includes('mpeg') ? 'mp3' : 'webm';
+/* v35: تحويل الكلام إلى نص في قاعة مزدحمة.
+   - اللغة مثبّتة على العربية، ومع الطلب قائمة قصيرة بمفردات الموضوع حتى تُكتب صحيحة (رشوة، اختلاس، غسل الأموال، المبلّغ...).
+     القائمة قصيرة عمداً: النموذج إذا لم يسمع كلاماً واضحاً قد «يكتب» كلمات من القائمة نفسها، والمتصفح يكشف ذلك ويتجاهله.
+   - يُطلب مع النص «احتمال كل كلمة» (logprobs) فيعرف الموقع إن كان السمع ضعيفاً (ضجيج) فيقول «ما سمعتك زين» بدل أن يخمّن.
+     إن لم يقبل النموذج هذا الخيار يُرسل الطلب بدونه تلقائياً. */
+const STT_PROMPT = process.env.STT_PROMPT || 'سؤال لنزيه عن النزاهة ومكافحة الفساد: نزاهة، الرشوة، الفساد، البلاغ، المبلّغ، الاختلاس، غسل الأموال، التزوير، المال العام، هيئة الرقابة ومكافحة الفساد، الخدمة المدنية، الانضباط الوظيفي، جامعة حائل.';
+let sttLogprobs = process.env.STT_LOGPROBS !== '0' && /gpt-4o/.test(STT_MODEL);
+async function sttCall(audio, type, ext, withLogprobs) {
   const form = new FormData();
   form.append('file', new Blob([audio], { type }), `speech.${ext}`);
   form.append('model', STT_MODEL);
   form.append('language', 'ar');
-  form.append('prompt', 'سؤال من زائر عن النزاهة ومكافحة الفساد: هيئة الرقابة ومكافحة الفساد نزاهة، الرشوة، التزوير، محرر رسمي، غسل الأموال، حماية المبلّغين والشهود، النظام الأساسي للحكم، مجلس الشورى، مجلس الوزراء، نظام المناطق، هيئة البيعة، الانضباط الوظيفي، الخدمة المدنية، أعضاء هيئة التدريس، الترقية، التفرغ العلمي، المال العام، المادة، العقوبة، جامعة حائل.');
-  const r = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
-    method: 'POST', headers: { Authorization: `Bearer ${API_KEY}` }, body: form, signal: withTimeout(30_000),
-  });
-  const data = await r.json();
+  form.append('temperature', '0');
+  form.append('prompt', STT_PROMPT);
+  form.append('response_format', 'json');
+  if (withLogprobs) form.append('include[]', 'logprobs');
+  return fetch(`${OPENAI_BASE}/audio/transcriptions`, { method: 'POST', headers: { Authorization: `Bearer ${API_KEY}` }, body: form, signal: withTimeout(30_000) });
+}
+async function handleSTT(req, res) {
+  if (needKey(res)) return;
+  const audio = await readBody(req, 3 * 1024 * 1024);   // 25 ثانية صوت لا تتجاوز مئات الكيلوبايت
+  if (audio.length < 1000) return sendJSON(res, 400, { error: 'audio too short' });
+  warmTts();                                             // الجواب سيحتاج صوتاً بعد ثانية أو ثانيتين: الاتصال يُجهَّز الآن
+  const type = (req.headers['content-type'] || 'audio/webm').split(';')[0];
+  const ext = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : type.includes('wav') ? 'wav' : type.includes('mpeg') ? 'mp3' : 'webm';
+  const t0 = Date.now();
+  let r = await sttCall(audio, type, ext, sttLogprobs), data = null;
+  if (!r.ok && sttLogprobs && (r.status === 400 || r.status === 422)) {
+    const why = await r.text().catch(() => '');
+    // يُطفأ الخيار فقط إن كان الرفض بسببه هو (لا بسبب ملف صوت تالف مثلاً)، ثم يُعاد الطلب بدونه
+    if (/include|logprob/i.test(why)) { console.log('STT logprobs rejected, continuing without:', why.slice(0, 160).replace(/\s+/g, ' ')); sttLogprobs = false; r = await sttCall(audio, type, ext, false); }
+    else { try { data = JSON.parse(why); } catch { data = {}; } }
+  }
+  if (!data) data = await r.json().catch(() => ({}));
   if (!r.ok) return sendJSON(res, 502, { error: data.error?.message || 'STT error' });
-  sendJSON(res, 200, { text: (data.text || '').trim() });
+  const out = { text: (data.text || '').trim(), ms: Date.now() - t0 };
+  const lp = Array.isArray(data.logprobs) ? data.logprobs.map((x) => Number(x && x.logprob)).filter((x) => Number.isFinite(x)) : [];
+  if (lp.length) out.conf = { avg: +(lp.reduce((a, b) => a + b, 0) / lp.length).toFixed(3), low: +(lp.filter((x) => x < -2.3).length / lp.length).toFixed(3), n: lp.length };
+  res.setHeader('Server-Timing', `stt;dur=${out.ms}`);
+  sendJSON(res, 200, out);
 }
 
 // ---------- Simli: الوجه الحي للشاشة الرئيسية ----------
@@ -642,7 +738,7 @@ async function handleSimliToken(req, res) {
 const LEMON_KEY = process.env.LEMONSLICE_API_KEY || '';
 const LEMON_AGENT = process.env.LEMONSLICE_AGENT_ID || 'agent_b36d37772d5d847d';
 const LEMON_BASE = process.env.LEMONSLICE_BASE || 'https://lemonslice.com';
-const LEMON_IDLE = Number(process.env.LEMON_IDLE_SECONDS || 120);
+const LEMON_IDLE = Number(process.env.LEMON_IDLE_SECONDS || 90);       // v35: 90 (كان 120). LemonSlice يحسب الدقائق من فتح الجلسة إلى إقفالها، والسكوت يُحسب كالكلام
 const LEMON_CODE = process.env.LEMON_CODE || SIMLI_CODE;
 const LK_URL = (process.env.LIVEKIT_URL || '').trim(), LK_KEY = process.env.LIVEKIT_API_KEY || '', LK_SECRET = process.env.LIVEKIT_API_SECRET || '';
 const LEMON_READY = !!(LEMON_KEY && LK_URL && LK_KEY && LK_SECRET);
@@ -656,28 +752,270 @@ function livekitToken(identity, room, publish, ttl = 7200) {
   const sig = crypto.createHmac('sha256', LK_SECRET).update(`${head}.${body}`).digest('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
   return `${head}.${body}.${sig}`;
 }
-async function handleLemonToken(req, res) {
-  if (!LEMON_READY) return sendJSON(res, 503, { error: 'LemonSlice غير مضبوط: أضف LEMONSLICE_API_KEY و LIVEKIT_URL و LIVEKIT_API_KEY و LIVEKIT_API_SECRET في Environment' });
-  const body = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}');
-  if (LEMON_CODE && body.code !== LEMON_CODE) return sendJSON(res, 403, { error: 'رمز الشاشة غير صحيح' });
-  const room = 'nazih-' + crypto.randomBytes(6).toString('hex');
+/* مهلة نهاية الكلام عند LemonSlice: إن انقطع تدفق الصوت هذه المدة يَعتبر الجواب انتهى. كانت 2 ثانية فكانت أي سكتة بين جملتين
+   (العقل ما زال يكتب، أو الصوت يتأخر) تُنهي الكلام عند الوجه ثم يبدأ من جديد (تقطّع). الآن 5 ثوانٍ احتياطاً فقط،
+   ونهاية الجواب تُعلَن صراحة بـ audio_end حين يخلص نزيه. */
+const LEMON_DONE_S = Number(process.env.LEMON_RESPONSE_DONE_SECONDS || 5);
+/* simulcast: LemonSlice يرسل الفيديو بأكثر من جودة، فإن ضعفت شبكة الشاشة تأخذ الأخف بدل أن يتقطع (توصية LemonSlice للشبكات غير المستقرة).
+   للإيقاف: LEMON_SIMULCAST=0 */
+const LEMON_SIMULCAST = process.env.LEMON_SIMULCAST !== '0';
+function lemonCreateBody(room) {
+  return { transport_type: 'websocket-livekit', agent_id: LEMON_AGENT, audio_sample_rate: 16000, idle_timeout: LEMON_IDLE, response_done_timeout: LEMON_DONE_S,
+    livekit_properties: { livekit_url: LK_URL, livekit_token: livekitToken('lemonslice-avatar', room, true), ...(LEMON_SIMULCAST ? { video_codec: 'vp8', simulcast: true } : {}) } };
+}
+async function lemonCreate(room) {
   const r = await fetch(`${LEMON_BASE}/api/liveai/sessions`, {
-    method: 'POST',
-    headers: { 'X-API-Key': LEMON_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      transport_type: 'websocket-livekit', agent_id: LEMON_AGENT, audio_sample_rate: 16000, idle_timeout: LEMON_IDLE, response_done_timeout: 2,
-      livekit_properties: { livekit_url: LK_URL, livekit_token: livekitToken('lemonslice-avatar', room, true) },
-    }),
-    signal: withTimeout(25_000),
+    method: 'POST', headers: { 'X-API-Key': LEMON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(lemonCreateBody(room)), signal: withTimeout(25_000),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok || !data.websocket_address) {
     const why = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data.error || data).slice(0, 300);
     console.warn('LemonSlice session:', r.status, why);
-    return sendJSON(res, 502, { error: why || 'LemonSlice error' });
+    throw new Error(why || `LemonSlice ${r.status}`);
   }
-  console.log(`LemonSlice: جلسة جديدة ${data.session_id || ''} في الغرفة ${room}`);
-  sendJSON(res, 200, { ws: data.websocket_address, url: LK_URL, token: livekitToken('screen-' + crypto.randomBytes(4).toString('hex'), room, false), session: data.session_id || '' });
+  return data;
+}
+async function lemonTerminateById(id) {                    // احتياط: جلسة فُتحت والشاشة انصرفت قبل أن تستلمها
+  if (!id) return;
+  try { await fetch(`${LEMON_BASE}/api/liveai/sessions/${encodeURIComponent(id)}/control`, { method: 'POST', headers: { 'X-API-Key': LEMON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'terminate' }), signal: withTimeout(10_000) }); } catch {}
+}
+
+/* ---------- v35: الخادم يرسل صوت نزيه إلى LemonSlice بنفسه ----------
+   قبل: الخادم (في أمريكا) يرسل الصوت إلى المتصفح (في السعودية)، والمتصفح يعيد رفعه إلى LemonSlice (في أمريكا).
+   كل مقطع يعبر الإنترنت مرتين ذهاباً وإياباً، وأي بطء في شبكة الشاشة يؤخر الكلام أو يقطّعه.
+   الآن: الخادم يفتح قناة LemonSlice بنفسه ويرسل الصوت مباشرة من مزوّد الصوت إلى الوجه، والمتصفح يرسل نص الجملة فقط
+   ويشاهد الفيديو من LiveKit. قناة LemonSlice لا تصل للمتصفح أصلاً. للرجوع للطريقة القديمة: LEMON_RELAY=0 */
+const LEMON_RELAY = process.env.LEMON_RELAY !== '0';
+const LEMON_MAX = Number(process.env.LEMON_MAX_SESSIONS || 4);
+const LEMON_CHUNK = 3200;                                 // 0.1 ثانية من PCM16 بتردد 16 كيلوهرتز (المستحسن عندهم 80–100 ملّي ثانية)
+const lemonSessions = new Map();
+/* عميل WebSocket: المدمج في Node 22 فأحدث، وإلا عميل صغير مكتوب هنا (RFC 6455) حتى يعمل على أي إصدار بلا مكتبات */
+function wsOpen(url, timeoutMs = 10_000) {
+  const api = { onmessage: null, onclose: null, open: false, send() {}, close() {} };
+  if (typeof WebSocket === 'function' && process.env.WS_MINIMAL !== '1') {
+    return new Promise((resolve, reject) => {
+      let done = false; const ws = new WebSocket(url);
+      const t = setTimeout(() => { if (!done) { done = true; try { ws.close(); } catch {} reject(new Error('انتهت مهلة قناة LemonSlice')); } }, timeoutMs);
+      api.send = (s) => { if (ws.readyState === 1) ws.send(s); };
+      api.close = () => { try { ws.close(); } catch {} };
+      ws.addEventListener('open', () => { if (done) return; done = true; clearTimeout(t); api.open = true; resolve(api); });
+      ws.addEventListener('message', (e) => { try { api.onmessage?.(typeof e.data === 'string' ? e.data : Buffer.from(e.data).toString('utf8')); } catch {} });
+      ws.addEventListener('close', (e) => { const was = api.open; api.open = false; if (!done) { done = true; clearTimeout(t); reject(new Error(`أُغلقت قناة LemonSlice (${e.code})`)); } else if (was) api.onclose?.(e.code); });
+      ws.addEventListener('error', () => { if (!done) { done = true; clearTimeout(t); reject(new Error('تعذّر فتح قناة LemonSlice')); } });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const u = new URL(url), key = crypto.randomBytes(16).toString('base64'), secure = u.protocol === 'wss:';
+    const req = require(secure ? 'https' : 'http').request({ host: u.hostname, port: u.port || (secure ? 443 : 80), path: (u.pathname || '/') + u.search, method: 'GET',
+      headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': key, 'User-Agent': 'nazih-kiosk' } });
+    const t = setTimeout(() => req.destroy(new Error('انتهت مهلة قناة LemonSlice')), timeoutMs);
+    req.on('upgrade', (resp, sock, head) => {
+      clearTimeout(t);
+      if (resp.headers['sec-websocket-accept'] !== crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')) { sock.destroy(); return reject(new Error('رد غير صحيح من قناة LemonSlice')); }
+      sock.setNoDelay(true);
+      const frame = (op, payload) => {
+        const n = payload.length, mask = crypto.randomBytes(4); let h;
+        if (n < 126) { h = Buffer.alloc(2); h[1] = 0x80 | n; } else if (n < 65536) { h = Buffer.alloc(4); h[1] = 0x80 | 126; h.writeUInt16BE(n, 2); } else { h = Buffer.alloc(10); h[1] = 0x80 | 127; h.writeBigUInt64BE(BigInt(n), 2); }
+        h[0] = 0x80 | op; const body = Buffer.allocUnsafe(n); for (let i = 0; i < n; i++) body[i] = payload[i] ^ mask[i & 3];
+        return Buffer.concat([h, mask, body]);
+      };
+      let buf = head && head.length ? Buffer.from(head) : Buffer.alloc(0), frags = [], closedOnce = false;
+      const finish = (code) => { if (closedOnce) return; closedOnce = true; const was = api.open; api.open = false; if (was) api.onclose?.(code); };
+      api.send = (s) => { if (api.open) { try { sock.write(frame(1, Buffer.from(s, 'utf8'))); } catch {} } };
+      api.close = () => { if (!api.open) return; try { sock.write(frame(8, Buffer.alloc(0))); } catch {} api.open = false; setTimeout(() => sock.destroy(), 500); };
+      const parse = () => {
+        for (;;) {
+          if (buf.length < 2) return;
+          const b0 = buf[0], b1 = buf[1]; let n = b1 & 0x7f, off = 2;
+          if (n === 126) { if (buf.length < 4) return; n = buf.readUInt16BE(2); off = 4; } else if (n === 127) { if (buf.length < 10) return; n = Number(buf.readBigUInt64BE(2)); off = 10; }
+          const masked = (b1 & 0x80) !== 0; if (masked) off += 4;
+          if (buf.length < off + n) return;
+          let p = buf.subarray(off, off + n);
+          if (masked) { const mk = buf.subarray(off - 4, off), q = Buffer.allocUnsafe(n); for (let i = 0; i < n; i++) q[i] = p[i] ^ mk[i & 3]; p = q; }
+          buf = buf.subarray(off + n);
+          const op = b0 & 0x0f, fin = (b0 & 0x80) !== 0;
+          if (op === 8) { try { sock.write(frame(8, Buffer.alloc(0))); } catch {} sock.end(); finish(n >= 2 ? p.readUInt16BE(0) : 1005); return; }
+          if (op === 9) { try { sock.write(frame(10, p)); } catch {} continue; }
+          if (op === 10) continue;
+          frags.push(Buffer.from(p));
+          if (fin) { const msg = Buffer.concat(frags).toString('utf8'); frags = []; try { api.onmessage?.(msg); } catch {} }
+        }
+      };
+      sock.on('data', (d) => { buf = buf.length ? Buffer.concat([buf, d]) : d; parse(); });
+      sock.on('close', () => finish(1006));
+      sock.on('error', () => {});
+      api.open = true; resolve(api); parse();
+    });
+    req.on('response', (resp) => { clearTimeout(t); resp.resume(); reject(new Error(`قناة LemonSlice رفضت الاتصال (${resp.statusCode})`)); });
+    req.on('error', (e) => { clearTimeout(t); reject(e); });
+    req.end();
+  });
+}
+function lemonSend(s, obj) { if (s.closed || !s.ws || !s.ws.open) return false; try { s.ws.send(JSON.stringify(obj)); return true; } catch { return false; } }
+function lemonWake(s, msg) { const w = [...s.waiters]; s.waiters.clear(); w.forEach((f) => f(msg)); }
+function lemonClose(s, why) {
+  if (s.closed) return;
+  s.closed = true; lemonSessions.delete(s.key); clearInterval(s.beat);
+  if (s.job) { s.job.aborted = true; s.job.ac.abort(); }
+  try { if (s.ws?.open) s.ws.send(JSON.stringify({ command: 'terminate' })); } catch {}
+  setTimeout(() => { try { s.ws?.close(); } catch {} }, 300);
+  lemonWake(s, { closed: true });
+  console.log(`LemonSlice: أُقفلت الجلسة ${s.id} (${why}) بعد ${Math.round((Date.now() - s.created) / 1000)} ثانية، صوت ${Math.round(s.sentBytes / 32000)} ثانية`);
+}
+function lemonAdopt(data, ws, room) {
+  const s = { key: crypto.randomBytes(18).toString('base64url'), id: data.session_id || '', room, ws, created: Date.now(), lastUse: Date.now(), closed: false,
+    chain: Promise.resolve(), gen: 0, turn: 0, job: null, waiters: new Set(), turnStart: 0, turnBytes: 0, lastAudio: 0, lastFinished: 0, endSent: 0, sentBytes: 0, beat: null };
+  ws.onmessage = (txt) => {
+    let m = null; try { m = JSON.parse(txt); } catch { return; }
+    // «انتهى بعد مقاطعة» لا يوقظ من ينتظر نهاية الجواب الجديد (المقاطعة نفسها توقظه)، حتى لا يُعلَن «سكت» والجواب الجديد ما زال يُنطق
+    if (m?.command === 'playback_finished') { s.lastFinished = Date.now(); if (!m.interrupted) lemonWake(s, { finished: true, pos: m.playback_position }); }
+  };
+  ws.onclose = (code) => lemonClose(s, `أغلقها LemonSlice ${code}`);
+  s.beat = setInterval(() => lemonSend(s, { command: 'heartbeat', timestamp: Date.now() }), 15_000);
+  s.beat.unref?.();
+  lemonSessions.set(s.key, s);
+  return s;
+}
+setInterval(() => {                                         // جلسة انصرفت عنها الشاشة (أُغلق الجهاز أو انقطع) تُقفل حتى لا تُحسب دقائقها
+  const now = Date.now();
+  for (const s of lemonSessions.values()) if (now - s.lastUse > (LEMON_IDLE + 30) * 1000) lemonClose(s, 'لا استخدام');
+}, 20_000).unref();
+/* مقاطعة بدور (turn): كل مقاطعة من الشاشة ترفع رقم الدور. أول جملة من الجواب الجديد تحمل الرقم الجديد فتطبّق المقاطعة بنفسها قبل أن تُرسل،
+   فلا يهم أيهما يصل للخادم أولاً (طلب المقاطعة أم الجملة). كان طلب المقاطعة المتأخر يقطع أول جملة من الجواب الجديد أو يُسقطها. */
+function lemonInterrupt(s, t) {
+  if (t) s.turn = t;
+  s.gen++; if (s.job) { s.job.aborted = true; s.job.ac.abort(); }
+  lemonSend(s, { command: 'interrupt' }); s.turnStart = 0; s.turnBytes = 0;
+  lemonWake(s, { finished: true, interrupted: true });
+}
+
+async function handleLemonToken(req, res) {
+  if (!LEMON_READY) return sendJSON(res, 503, { error: 'LemonSlice غير مضبوط: أضف LEMONSLICE_API_KEY و LIVEKIT_URL و LIVEKIT_API_KEY و LIVEKIT_API_SECRET في Environment' });
+  const body = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}');
+  if (LEMON_CODE && body.code !== LEMON_CODE) return sendJSON(res, 403, { error: 'رمز الشاشة غير صحيح' });
+  const room = 'nazih-' + crypto.randomBytes(6).toString('hex');
+  const viewer = livekitToken('screen-' + crypto.randomBytes(4).toString('hex'), room, false);
+  if (body.v !== 2) {                                       // صفحة قديمة ما زالت مفتوحة (قبل v35): الطريقة القديمة كما هي
+    let data; try { data = await lemonCreate(room); } catch (e) { return sendJSON(res, 502, { error: e.message }); }
+    console.log(`LemonSlice: جلسة جديدة ${data.session_id || ''} في الغرفة ${room} (صفحة قديمة)`);
+    return sendJSON(res, 200, { ws: data.websocket_address, url: LK_URL, token: viewer, session: data.session_id || '' });
+  }
+  /* v35: الرد على سطرين. الأول فوراً (عنوان LiveKit وتذكرة المشاهدة) فتبدأ الشاشة دخول الغرفة الآن، بالتوازي مع فتح الجلسة عند LemonSlice،
+     والثاني حين تجهز الجلسة. كانت الخطوات تتتابع واحدة بعد الأخرى. */
+  // الحد الأعلى للجلسات: تُقفل جلسة خاملة (أكثر من دقيقة بلا استخدام) لتفسح، ولا تُقفل جلسة الشاشة وهي تتحاور
+  if (LEMON_RELAY && lemonSessions.size >= LEMON_MAX) {
+    const old = [...lemonSessions.values()].filter((x) => Date.now() - x.lastUse > 60_000).sort((a, b) => a.lastUse - b.lastUse)[0];
+    if (old) lemonClose(old, 'جلسة أحدث'); else return sendJSON(res, 503, { error: 'جلسات الوجه الحي مشغولة الآن' });
+  }
+  res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' });
+  res.write(JSON.stringify({ url: LK_URL, token: viewer, room }) + '\n');
+  let gone = false; res.on('close', () => { if (!res.writableEnded) gone = true; });
+  const t0 = Date.now(); let data = null;
+  try {
+    data = await lemonCreate(room);
+    const tCreate = Date.now() - t0;
+    if (!LEMON_RELAY) {
+      if (gone || res.destroyed) { lemonTerminateById(data.session_id); return; }       // انصرفت الشاشة قبل أن تجهز: لا تبقى الجلسة تُحسب
+      res.end(JSON.stringify({ ws: data.websocket_address, session: data.session_id || '', ms: { create: tCreate } }) + '\n'); return;
+    }
+    const ws = await wsOpen(data.websocket_address, 10_000);
+    const s = lemonAdopt(data, ws, room);
+    const tWs = Date.now() - t0 - tCreate;
+    console.log(`LemonSlice: جلسة جديدة ${s.id} في الغرفة ${room} (فتح الجلسة ${tCreate} ملّي ثانية، القناة ${tWs})`);
+    if (gone || res.destroyed) { lemonClose(s, 'انصرفت الشاشة قبل أن تجهز'); return; }
+    res.end(JSON.stringify({ key: s.key, session: s.id, relay: true, ms: { create: tCreate, ws: tWs } }) + '\n');
+  } catch (e) {
+    if (data?.session_id) lemonTerminateById(data.session_id);
+    console.warn('LemonSlice connect:', e.message);
+    if (!res.destroyed) res.end(JSON.stringify({ error: String(e.message || e).slice(0, 300) }) + '\n');
+  }
+}
+/* جملة من نزيه: الخادم يولّد صوتها (أو يأخذه من الذاكرة) ويرسله إلى LemonSlice أول بأول، ويخبر الشاشة بسطرين:
+   first (بدأ الصوت يصل للوجه) و done (أُرسل المقطع كله، ومدته). الجمل تُرسل بالترتيب، وLemonSlice يصفّها خلف بعضها بلا سكتة. */
+async function handleLemonSay(req, res) {
+  const body = JSON.parse((await readBody(req, 10_000)).toString('utf8') || '{}');
+  const s = lemonSessions.get(String(body.key || ''));
+  if (!s || s.closed) return sendJSON(res, 410, { error: 'انتهت جلسة الوجه' });
+  const text0 = String(body.text || '').trim().slice(0, 1500);
+  if (!text0) return sendJSON(res, 400, { error: 'no text' });
+  if (needKey(res)) return;
+  s.lastUse = Date.now();
+  const t = Number(body.turn) || 0;
+  if (t && t < s.turn) return sendJSON(res, 200, { e: 'done', bytes: 0, dropped: true, stale: true });   // جملة من جواب قوطع
+  if (t > s.turn) lemonInterrupt(s, t);                      // أول جملة بعد مقاطعة: تطبّقها هي (انظر lemonInterrupt)
+  const myGen = s.gen, prev = s.chain; let release = null;
+  s.chain = new Promise((r) => { release = r; });
+  const job = { aborted: false, ac: new AbortController() };
+  res.on('close', () => { if (!res.writableEnded) { job.aborted = true; job.ac.abort(); } });
+  res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' });
+  const tIn = Date.now();
+  try { await prev; } catch {}
+  let total = 0, first = 0;
+  try {
+    if (job.aborted || s.closed || s.gen !== myGen) { res.end(JSON.stringify({ e: 'done', bytes: 0, dropped: true }) + '\n'); return; }
+    s.job = job;
+    const t0 = Date.now(), info = {};
+    let carry = Buffer.alloc(0);
+    const sendChunk = (c) => {
+      if (!lemonSend(s, { command: 'audio', audio: c.toString('base64'), sampleRate: 16000, encoding: 'PCM16' })) throw new Error('انقطعت قناة LemonSlice');
+      if (!first) { first = Date.now(); if (!s.turnStart) { s.turnStart = first; s.turnBytes = 0; } res.write(JSON.stringify({ e: 'first', ms: first - t0, wait: t0 - tIn, cache: info.cache, tts: info.provider }) + '\n'); }
+      total += c.length; s.turnBytes += c.length; s.sentBytes += c.length; s.lastAudio = Date.now();
+    };
+    for await (const part of pcmChunks(SCREEN_PROVIDER, text0, job.ac.signal, info)) {
+      if (job.aborted || s.closed || s.gen !== myGen) break;
+      const data = carry.length ? Buffer.concat([carry, part]) : part;
+      let i = 0; for (; i + LEMON_CHUNK <= data.length; i += LEMON_CHUNK) sendChunk(data.subarray(i, i + LEMON_CHUNK));
+      carry = Buffer.from(data.subarray(i));
+    }
+    if (!job.aborted && !s.closed && s.gen === myGen && carry.length >= 2) sendChunk(carry.subarray(0, carry.length - (carry.length % 2)));
+    s.lastUse = Date.now();
+    if (!res.destroyed) res.end(JSON.stringify({ e: 'done', bytes: total, ms: Date.now() - t0, aborted: job.aborted || s.gen !== myGen }) + '\n');
+  } catch (e) {
+    console.warn('lemon-say:', e.message);
+    if (!res.destroyed) res.end(JSON.stringify({ e: 'error', error: String(e.message || e).slice(0, 200), bytes: total }) + '\n');
+  } finally { if (s.job === job) s.job = null; release(); }
+}
+/* أوامر الجلسة: interrupt (الزائر قاطع: يسكت فوراً ويُلغى ما في الطابور)، end (انتهى الجواب: audio_end ثم انتظار انتهاء النطق فعلاً)،
+   terminate (إقفال الجلسة)، keep (الشاشة ما زالت هنا) */
+async function handleLemonCtl(req, res) {
+  const body = JSON.parse((await readBody(req, 2000)).toString('utf8') || '{}');
+  const s = lemonSessions.get(String(body.key || ''));
+  if (!s || s.closed) return sendJSON(res, 410, { error: 'انتهت جلسة الوجه' });
+  s.lastUse = Date.now();
+  const cmd = String(body.cmd || ''), t = Number(body.turn) || 0;
+  if (cmd === 'interrupt') {
+    if (t && t <= s.turn) return sendJSON(res, 200, { ok: true, stale: true });      // الجملة الجديدة سبقته وطبّقت المقاطعة بنفسها
+    lemonInterrupt(s, t || s.turn + 1);
+    return sendJSON(res, 200, { ok: true });
+  }
+  if (cmd === 'terminate') { lemonClose(s, 'طلب الشاشة'); return sendJSON(res, 200, { ok: true }); }
+  if (cmd === 'keep') return sendJSON(res, 200, { ok: true });
+  if (cmd === 'end') {
+    if (t && t < s.turn) return sendJSON(res, 200, { finished: true, stale: true });
+    try { await s.chain; } catch {}                          // ينتظر آخر جملة في الطابور حتى تُرسل كلها
+    if (s.closed) return sendJSON(res, 410, { error: 'انتهت جلسة الوجه' });
+    if (!s.turnStart) return sendJSON(res, 200, { finished: true, empty: true });
+    const est = s.turnStart + (s.turnBytes / 32000) * 1000, t0 = Date.now();
+    s.endSent = t0; s.turnStart = 0; s.turnBytes = 0;
+    lemonSend(s, { command: 'audio_end' });
+    /* تنتهي بإشارة LemonSlice أنه خلص النطق، أو احتياطاً بعد مدة الصوت المتبقية + 4 ثوانٍ. إشارة «انتهى» قبل الموعد المتوقع بأكثر من ثانية
+       تخص جواباً سابقاً (LemonSlice ينهي الجواب إن انقطع الصوت 5 ثوانٍ) فلا يُعتد بها، حتى لا يُفتح المايك ونزيه ما زال يتكلم */
+    const deadline = t0 + Math.min(10 * 60_000, Math.max(1500, est - t0 + 4000));
+    let out = null;
+    while (!out) {
+      const left = deadline - Date.now();
+      if (left <= 0) { out = { finished: true, estimated: true }; break; }
+      let timer = null, wake = null;
+      const msg = await new Promise((r) => { wake = r; s.waiters.add(r); timer = setTimeout(() => r(null), left); });
+      clearTimeout(timer); s.waiters.delete(wake);
+      if (!msg) out = { finished: true, estimated: true };
+      else if (msg.closed || msg.interrupted || Date.now() >= est - 1000) out = msg;
+    }
+    s.lastUse = Date.now();
+    if (out.closed) return sendJSON(res, 410, { error: 'انتهت جلسة الوجه' });
+    return sendJSON(res, 200, { ...out, waited: Date.now() - t0 });
+  }
+  return sendJSON(res, 400, { error: 'unknown cmd' });
 }
 
 // ---------- الملفات الثابتة ----------
@@ -782,7 +1120,13 @@ function saveStats(sync) {
 }
 setInterval(() => saveStats(false), 30000).unref();
 setInterval(() => { const d = statDay(); console.log(`📊 اليوم: ${d.sessions} جلسة، ${d.q} سؤال، ${d.rate.reduce((a, b) => a + b, 0)} تقييم، ${d.quizN} اختبار`); }, 30 * 60000).unref();
-['SIGTERM', 'SIGINT'].forEach((sig) => process.on(sig, () => { saveStats(true); process.exit(0); }));
+/* v35: عند إيقاف الخادم (كل نشر جديد على Render) تُقفل جلسات الوجه الحي التي يمسكها الخادم، فلا تبقى تُحسب حتى مهلة السكوت عند LemonSlice */
+['SIGTERM', 'SIGINT'].forEach((sig) => process.on(sig, () => {
+  saveStats(true);
+  const live = [...lemonSessions.values()];
+  for (const s of live) { lemonClose(s, 'إيقاف الخادم'); lemonTerminateById(s.id); }
+  setTimeout(() => process.exit(0), live.length ? 1500 : 0);
+}));
 /* أرقام اليوم لشاشات العرض (أعداد عامة فقط، بدون رمز دخول) */
 function handleLive(req, res) {
   const d = statDay();
@@ -831,13 +1175,16 @@ http.createServer(async (req, res) => {
       if (req.url.startsWith('/api/stt')) return await handleSTT(req, res);
       if (req.url.startsWith('/api/simli-token')) return await handleSimliToken(req, res);
       if (req.url.startsWith('/api/lemon-token')) return await handleLemonToken(req, res);
+      if (req.url.startsWith('/api/lemon-say')) return await handleLemonSay(req, res);
+      if (req.url.startsWith('/api/lemon-ctl')) return await handleLemonCtl(req, res);
       return sendJSON(res, 404, { error: 'not found' });
     }
     if (/^\/stats\/?(\?.*)?$/.test(req.url)) req.url = '/stats.html';      // لوحة الإحصائيات: ‎/stats‎
     // روابط قصيرة: ‎/quiz‎ صفحة التحدي للجوال، ‎/screen2‎ شاشة «جرّب نزيه من جوالك»، ‎/screen3‎ شاشة «تحدي النزاهة»
     { const m = req.url.match(/^\/(quiz|screen2|screen3)\/?(\?.*)?$/);
       if (m) req.url = m[1] === 'quiz' ? '/quiz.html' + (m[2] || '') : '/screen.html?show=' + (m[1] === 'screen3' ? 'quiz' : 'site'); }
-    if (/^\/js\/runtime\.js(\?.*)?$/.test(req.url)) { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }); return res.end(`window.NAZIH_PHONE_SIMLI=${SIMLI_PHONES};`); }
+    // v35: عنوان مشروع LiveKit (ليس سراً) حتى تسخّن الشاشة الاتصال به من فتح الصفحة دون فتح جلسة
+    if (/^\/js\/runtime\.js(\?.*)?$/.test(req.url)) { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' }); return res.end(`window.NAZIH_PHONE_SIMLI=${SIMLI_PHONES};${LEMON_READY ? `window.NAZIH_LK_URL=${JSON.stringify(LK_URL)};` : ''}`); }
     serveStatic(req, res);
   } catch (e) {
     const timeout = e?.name === 'TimeoutError' || e?.name === 'AbortError';
@@ -848,7 +1195,12 @@ http.createServer(async (req, res) => {
   console.log(`✅ نزيه يعمل على: http://localhost:${PORT}`);
   if (SIMLI_PHONES) console.log(`✅ الوجه الحي مفعّل للجوالات أيضاً (تُقفل الجلسة بعد ${SIMLI_PHONE_IDLE} ثانية سكوت، وأقصاها ${SIMLI_PHONE_MAX} ثانية)`);
   console.log(SIMLI_KEY && SIMLI_FACE ? '✅ Simli مضبوط (الوجه الحي للشاشة: /?avatar=simli)' : `ℹ️  Simli غير مفعّل${SIMLI_KEY ? ' — ينقص SIMLI_FACE_ID' : ''}`);
-  console.log(LEMON_READY ? `✅ LemonSlice مضبوط (الوجه الحي للشاشة: /?avatar=lemon، الأفتار ${LEMON_AGENT})` : `ℹ️  LemonSlice غير مفعّل${LEMON_KEY || LK_URL ? ' — ينقص: ' + [!LEMON_KEY && 'LEMONSLICE_API_KEY', !LK_URL && 'LIVEKIT_URL', !LK_KEY && 'LIVEKIT_API_KEY', !LK_SECRET && 'LIVEKIT_API_SECRET'].filter(Boolean).join('، ') : ''}`);
+  console.log(LEMON_READY ? `✅ LemonSlice مضبوط (الوجه الحي للشاشة: /?avatar=lemon، الأفتار ${LEMON_AGENT}، الصوت ${LEMON_RELAY ? 'من الخادم مباشرة' : 'عبر المتصفح'}، Node ${process.version}${typeof WebSocket === 'function' ? '' : '، عميل WebSocket الداخلي'})` : `ℹ️  LemonSlice غير مفعّل${LEMON_KEY || LK_URL ? ' — ينقص: ' + [!LEMON_KEY && 'LEMONSLICE_API_KEY', !LK_URL && 'LIVEKIT_URL', !LK_KEY && 'LIVEKIT_API_KEY', !LK_SECRET && 'LIVEKIT_API_SECRET'].filter(Boolean).join('، ') : ''}`);
+  // v35: الملفات الكبيرة تُضغط مسبقاً عند التشغيل، فلا ينتظر أول زائر بعد كل نشر ضغطها (الخادم المجاني بطيء المعالجة)
+  for (const f of ['index.html', 'js/app.js', 'js/law-data.js', 'css/style.css']) {
+    const fp = path.join(PUBLIC_DIR, f);
+    fs.stat(fp, (err, st) => { if (err) return; fs.readFile(fp, (e, raw) => { if (e) return; zlib.gzip(raw, { level: 9 }, (e2, buf) => { if (!e2) GZ_CACHE.set(fp, { etag: `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`, buf }); }); }); });
+  }
   console.log(`🔊 الصوت: ${TTS_PROVIDER}${TTS_PROVIDER === 'azure' ? ` (${AZ_VOICE} @ ${AZ_REGION})` : TTS_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ` (${TTS_VOICE})`}`);
   if (SCREEN_PROVIDER !== TTS_PROVIDER) console.log(`🔊 صوت الشاشة الرئيسية: ${SCREEN_PROVIDER}${SCREEN_PROVIDER === 'elevenlabs' ? ` (${EL_VOICE}, ${EL_MODEL})` : ''}`);
   console.log(`🧠 العقل: ${CHAT_PROVIDERS.map((p) => p.model).join(' ← احتياطي: ')}`);

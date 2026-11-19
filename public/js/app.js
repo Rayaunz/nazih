@@ -7,6 +7,7 @@ const CONFIG = {
   avatarImage: 'assets/avatar.jpg',
   idleResetSeconds: 120,       // يرجع لشاشة الترحيب بعد دقيقتين بدون تفاعل
   maxRecordSeconds: 25,
+  maxAutoSeconds: 12,          // v35: أقصى مدة للتسجيل التلقائي بدون ضغط (يحدّ من تسجيل ضجيج طويل)
   silenceMs: 750,              // (v34: كان 900) يوقف التسجيل تلقائياً بعد هذا الصمت (أقل = رد أسرع، لكن قد يقطع من يتوقف ليفكر)
   handsFree: true,             // true: نزيه يسمع تلقائياً بدون ضغط زر. false: لازم ضغط زر التحدث. (يمكن التبديل من الرابط: ‎?mic=auto‎ أو ‎?mic=button‎)
   autoMinLevel: 0.045,         // أقل مستوى صوت يُعتبر كلاماً في الاستماع التلقائي (ارفعه في الأماكن المزعجة)
@@ -57,8 +58,8 @@ const CONFIG = {
      لا تستعمل 3.0.x: واجهتها مختلفة (close بدل stop) فلا يعمل معها الوجه الحي. */
   simliVersion: '3.2.0',
   livekitVersion: '2.24.1',    // مكتبة LiveKit للمتصفح (وضع lemon فقط): تعرض فيديو وجه LemonSlice
-  lemonConnectWait: 15,        // أقصى انتظار (ثوانٍ) لاتصال LemonSlice قبل أن يُنطق الجواب بصورة نزيه
-  lemonIdleSeconds: 120,       // تُقفل جلسة LemonSlice بعد هذا السكوت (لا تُحسب دقائق والشاشة واقفة)
+  lemonConnectWait: 4,         // أقصى انتظار (ثوانٍ) للوجه قبل أن يُنطق الجواب بصوت نزيه فوق صورة الشخصية (والوجه يكمل حين يجهز). v35: 4 (كان 15)
+  lemonIdleSeconds: 90,        // تُقفل جلسة LemonSlice بعد هذا السكوت (لا تُحسب دقائق والشاشة واقفة). v35: 90 (كان 120)
   simliConnectWait: 9,       // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
   greeting: 'يا هلا والله، حيّاك الله! أنا نزيه. وش بغيت تعرف عن النزاهة ومكافحة الفساد؟ اسألني، أو اختر من الأسئلة، أو قل: اختبرني.',
 };
@@ -546,7 +547,9 @@ function initDID() {
       CONFIG.idleStatus = CONFIG.didStatus; setStatus(CONFIG.idleStatus);
       try {
         api.events?.on('agentActivity', ({ state }) => {
+          const was = didTalking;
           didTalking = state === 'TALKING' && performance.now() > ignoreTalkUntil; if (didTalking) T.mark('talking');
+          if (was && !didTalking) lastTalkEnd = performance.now();       // v35: متى سكت نزيه فعلاً (لا يُفتح المايك على صدى آخر كلمة)
           app.classList.toggle('talking', didTalking);
           if (CONFIG.ownBrain) muteDid();
           else if (CONFIG.pushToTalk && didTalking) setMic(false);      // نزيه بدأ يجاوب: يُقفل المايك
@@ -567,8 +570,9 @@ const T = { marks: {}, mark(k) { if (DEBUG && !(k in this.marks)) { this.marks[k
   show() {
     let el = document.getElementById('dbg');
     if (!el) { el = document.createElement('div'); el.id = 'dbg'; el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.78);color:#9f9;font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;direction:ltr;text-align:left;white-space:pre'; document.body.appendChild(el); }
-    const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-');
-    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d('lastWord', 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d('lastWord', 'firstText')}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${this.stream ? '\nvoice stream : ' + this.stream : ''}${this.ctx ? '\ncontext      : ' + this.ctx : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
+    const m = this.marks, d = (a, b) => (m[a] && m[b] ? ((m[b] - m[a]) / 1000).toFixed(1) + 's' : '-'), b0 = m.lastWord ? 'lastWord' : 'askStart';
+    // v35: «face audio» = وصل أول صوت إلى الوجه الحي، «first lip» = بدأ صوت الوجه فعلاً (الشفاه تتحرك معه). البداية: آخر كلمة من الزائر، أو لحظة السؤال إن كان مكتوباً
+    el.textContent = `avatar connect: ${this.connect || '-'}\nsilence wait : ${d('lastWord', 'recEnd')}\nspeech->text : ${d('recEnd', 'sttDone')}${this.stt ? ' (' + this.stt + ')' : ''}\nthinking     : ${d('askStart', 'firstText')}\nfirst sound  : ${d(b0, 'talking')}${m.filler ? ' (filler)' : ''}\nanswer ready : ${d(b0, 'firstText')}${m.faceAudio ? '\nface audio   : ' + d(b0, 'faceAudio') : ''}${m.lip ? '\nfirst lip    : ' + d(b0, 'lip') + ' (after face audio ' + d('faceAudio', 'lip') + ')' : ''}${this.lemon ? '\nface         : ' + this.lemon : ''}${this.mic ? '\nmic          : ' + this.mic : ''}${this.model ? '\nmodel        : ' + this.model : ''}${this.voice ? '\nvoice        : ' + this.voice : ''}${this.stream ? '\nvoice stream : ' + this.stream : ''}${this.ctx ? '\ncontext      : ' + this.ctx : ''}${m.exact ? '\n(exact article)' : ''}${m.bank ? '\n(ready answer)' : ''}`;
   } };
 
 /* انقطاع D-ID عند الخمول: D-ID يفصل الجلسة بعد فترة بلا كلام ويعرض «Are you still here? / Reconnect».
@@ -590,9 +594,11 @@ function setDidDown(v) {
   if (v) { didTalking = false; app.classList.remove('talking'); }
 }
 function watchDid() { if (did && !didReconnecting) setDidDown(!!didFindButton(/reconnect/i)); }
-function ensureDidConnected() {
+/* v35: لا يُفتح الوجه الحي (Simli أو LemonSlice) والشاشة في وضع الترحيب: كانت عبارات الترحيب الدورية تفتح جلسة كل مرة
+   فتُحسب الدقائق والشاشة فاضية. الاتصال يبدأ من لمسة الزائر أو كلامه أو سؤاله فقط. */
+function ensureDidConnected(why = '') {
   if (!did) return Promise.resolve();
-  if (did.ensure) { did.ensure(); return Promise.resolve(); }      // Simli: يبدأ الاتصال في الخلفية، والنطق ينتظره
+  if (did.ensure) { if (!attractOn || why === 'touch') did.ensure(why); return Promise.resolve(); }      // Simli/LemonSlice: يبدأ الاتصال في الخلفية، والنطق ينتظره
   watchDid();
   if (!didDown) return Promise.resolve();
   if (didReconnecting) return didReconnecting;
@@ -615,18 +621,22 @@ function ensureDidConnected() {
   })();
   return didReconnecting;
 }
-['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && (didDown || did.ensure)) ensureDidConnected(); }, { passive: true }));
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && (didDown || did.ensure)) ensureDidConnected('touch'); }, { passive: true }));
 
 /* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
-let didTalking = false;
+let didTalking = false, lastTalkEnd = 0;
+/* v35: «اضغط وتكلّم» (‎?ptt=1‎، ويُحفظ في الجهاز؛ ‎?ptt=0‎ للإلغاء): الزائر يضغط زر المايك مع الاستمرار وهو يتكلم ويتركه عند الانتهاء.
+   الأضمن في الضوضاء الشديدة: لا يسجّل نزيه إلا ما بين الضغط والترك، ولا يلتقط كلام من حول الشاشة. */
+const HOLD = (() => { try { const q = params.get('ptt'); if (q === '1' || q === '0') localStorage.setItem('nazih.ptt', q); return localStorage.getItem('nazih.ptt') === '1'; } catch { return params.get('ptt') === '1'; } })();
+if (HOLD) document.body.classList.add('hold');
 setInterval(() => {                         // أثناء كلام نزيه: الزر يتحول إلى «اضغط للمقاطعة»
   if (!did) return;
   const on = (speakingNow || didTalking) && !autoMic?.recording && !recState;
   if (micBtn.classList.contains('stop') === on) return;
   micBtn.classList.toggle('stop', on);
-  $('#pttLabel').textContent = on ? (CONFIG.bargeIn ? 'تكلّم أو اضغط للمقاطعة' : 'اضغط هنا للمقاطعة') : pttIdleLabel();
+  $('#pttLabel').textContent = on ? (HOLD ? 'اضغط مع الاستمرار للمقاطعة' : CONFIG.bargeIn ? 'تكلّم أو اضغط للمقاطعة' : 'اضغط هنا للمقاطعة') : pttIdleLabel();
 }, 200);
-const pttIdleLabel = () => (autoMic && audioCtx?.state === 'running' ? 'تكلّم مباشرة.. أنا أسمعك' : CONFIG.handsFree ? 'المس الشاشة لتفعيل الاستماع' : 'اضغط للتحدث');
+const pttIdleLabel = () => (HOLD ? 'اضغط مع الاستمرار وتكلّم' : autoMic && audioCtx?.state === 'running' ? 'تكلّم مباشرة.. أنا أسمعك' : CONFIG.handsFree ? 'المس الشاشة لتفعيل الاستماع' : 'اضغط للتحدث');
 function muteDid() { try { Promise.resolve(did?.functions.toggleMicState(true)).catch(() => {}); } catch {} }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitDidDone(len) {            // ينتظر حتى ينتهي نزيه من نطق المقطع
@@ -920,97 +930,199 @@ function makeSimliAvatar(own) {
   };
 }
 /* ---------------- وجه LemonSlice الحي (‎/?avatar=lemon‎، للشاشة الرئيسية) ----------------
-   مثل Simli تماماً من جهة الموقع: نزيه يسمع ويفكر ويجهّز الصوت العربي بنفسه، وLemonSlice يحرّك الوجه فقط.
-   - الخادم يفتح الجلسة (‎/api/lemon-token‎) ويعطي الشاشة: عنوان WebSocket لإرسال الصوت، وتذكرة مشاهدة لغرفة LiveKit.
-   - صوت نزيه (PCM16 أحادي 16 كيلوهرتز من ‎/api/tts-pcm‎) يُرسل قطعاً صغيرة، وLemonSlice ينشر الفيديو والصوت المتزامن في الغرفة.
-   - يتصل عند أول لمسة أو كلام، ويُقفل بعد السكوت وعند شاشة الترحيب. وإذا تعذّر يكمل نزيه بصورته وصوته. */
+   مثل Simli من جهة الموقع: نزيه يسمع ويفكر ويجهّز الصوت العربي بنفسه، وLemonSlice يحرّك الوجه فقط.
+   v35:
+   - الخادم هو الذي يرسل صوت نزيه إلى LemonSlice مباشرة (من مزوّد الصوت إلى الوجه داخل أمريكا)، والشاشة ترسل نص الجملة فقط
+     (‎/api/lemon-say‎) وتشاهد الفيديو من LiveKit. كانت الشاشة تنزّل الصوت ثم ترفعه، فيتأخر ويتقطّع على الشبكات البطيئة.
+   - الاتصال: الخادم يرد فوراً بتذكرة الغرفة فتدخلها الشاشة، وفي نفس الوقت يفتح الجلسة عند LemonSlice (كانت الخطوات متتابعة).
+   - أثناء الاتصال تظهر صورة الشخصية الجديدة نفسها (لا دائرة تحميل)، ولا تُفتح جلسة والشاشة في وضع الترحيب.
+   - يُقفل بعد السكوت وعند شاشة الترحيب. وإذا تعذّر يكمل نزيه بصورته وصوته.
+   - إن أطفأ الخادم هذه الطريقة (LEMON_RELAY=0) ترجع الشاشة تلقائياً إلى إرسال الصوت بنفسها كما في v34. */
+async function* ndjson(resp) {                      // سطور JSON متتابعة من رد متدفق
+  const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (line) { let o = null; try { o = JSON.parse(line); } catch {} if (o) yield o; } }
+      if (done) { const line = buf.trim(); if (line) { let o = null; try { o = JSON.parse(line); } catch {} if (o) yield o; } return; }
+    }
+  } finally { try { reader.releaseLock(); } catch {} }
+}
 function makeLemonAvatar(own) {
   const video = $('#simliVideo'), audio = $('#simliAudio'), box = $('#simliBox'), poster = $('#simliPoster'), wait = $('#simliWait');
-  const B = document.body.classList;
-  let room = null, ws = null, connecting = null, sdk = null, fails = 0, lastFail = 0, token = 0, talkT = null, idleT = null, beatT = null;
-  let playEnd = 0, via = 'own', sending = false;
-  const live = () => !!(room && ws && ws.readyState === 1);
+  const B = document.body.classList, stage = $('#stage'), topBar = $('.top');
+  let room = null, ws = null, key = '', connecting = null, sdk = null, fails = 0, lastFail = 0, token = 0, talkT = null, idleT = null, beatT = null, keepT = null;
+  let playEnd = 0, via = 'own', sending = false, sayAbort = null, endSeq = 0, tokAbort = null, preRoom = null, pendingKey = '', turn = 0, gaveUpOn = null;
+  const relay = () => !!key;
+  const live = () => !!(room && (key || (ws && ws.readyState === 1)));
   const face = (state, why = '') => { window.NAZIH_FACE = { state, why }; };
   const setLive = (v) => { B.toggle('simli-live', v); if (v) B.remove('simli-off'); };
-  const pkey = () => 'nazih.lposter.' + (innerHeight > innerWidth ? 'p' : 'l');
-  function setPoster(url) { if (!poster) return; if (!url) { poster.hidden = true; wait?.classList.remove('has-poster'); return; } poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
-  try { setPoster(localStorage.getItem(pkey())); } catch {}
+  const api = (path, body, extra = {}) => fetch(`${CONFIG.apiBase}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), ...extra });
+  const ctl = (cmd, k = key, keepalive = false, extra = {}) => (k ? api('/api/lemon-ctl', { key: k, cmd, ...extra }, { keepalive }).then(async (r) => ({ status: r.status, ...(await r.json().catch(() => ({}))) })).catch(() => ({ status: 0 })) : Promise.resolve({ status: 410 }));
+  const beacon = (k) => { let sent = false; try { sent = navigator.sendBeacon?.(`${CONFIG.apiBase}/api/lemon-ctl`, new Blob([JSON.stringify({ key: k, cmd: 'terminate' })], { type: 'text/plain' })); } catch {} if (!sent) ctl('terminate', k, true); };
+  /* ---- الشكل: نسبة الفيديو، وأسفل الشريط العلوي حتى لا يغطي الرأس في الشاشات العريضة (انظر v35 في style.css) ---- */
+  const setAR = (w, h) => { if (w > 0 && h > 0) stage.style.setProperty('--lemon-ar', (w / h).toFixed(4)); };
+  const setHdr = () => {
+    try {
+      const tr = topBar.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+      const v = tr.height && getComputedStyle(topBar).position === 'absolute' ? Math.max(0, Math.round(tr.bottom - sr.top + 6)) : 0;
+      stage.style.setProperty('--hdr', v + 'px');
+    } catch {}
+  };
+  setHdr(); addEventListener('resize', setHdr); try { new ResizeObserver(setHdr).observe(topBar); } catch {}
+  document.fonts?.ready?.then(setHdr).catch(() => {});
+  const markShape = () => { box?.classList.toggle('tall', video.videoHeight > video.videoWidth); setAR(video.videoWidth, video.videoHeight); };
+  video.addEventListener('resize', markShape); video.addEventListener('loadedmetadata', markShape);
+  /* ---- صورة الشخصية أثناء الاتصال: لقطة من الوجه الحي نفسه في هذا الجهاز إن وُجدت، وإلا الصورة المرفقة مع الموقع ---- */
+  const PKEY = 'nazih.lposter', DEFAULT_POSTER = 'assets/lemon-poster.jpg';
+  function setPoster(url) { if (!poster) return; poster.src = url; poster.hidden = false; wait?.classList.add('has-poster'); }
+  poster?.addEventListener('load', () => { if (!video.videoWidth) setAR(poster.naturalWidth, poster.naturalHeight); });
+  poster?.addEventListener('error', () => { if (!poster.src.endsWith(DEFAULT_POSTER)) { try { localStorage.removeItem(PKEY); } catch {} setPoster(DEFAULT_POSTER); } });
+  let saved = null; try { saved = localStorage.getItem(PKEY); } catch {}
+  setPoster(saved || DEFAULT_POSTER);
   function grabPoster(tries = 12) {
     try {
       const w = video.videoWidth, h = video.videoHeight;
       if (w && h) {
-        const c = document.createElement('canvas'), k = Math.min(1, 720 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
+        const c = document.createElement('canvas'), k = Math.min(1, 900 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
         const g = c.getContext('2d'); g.drawImage(video, 0, 0, c.width, c.height);
         const px = g.getImageData(c.width >> 1, c.height >> 1, 1, 1).data;
-        if (px[0] + px[1] + px[2] > 60) { const url = c.toDataURL('image/jpeg', 0.82); setPoster(url); try { localStorage.setItem(pkey(), url); } catch {} return; }
+        if (px[0] + px[1] + px[2] > 60) { const url = c.toDataURL('image/jpeg', 0.84); setPoster(url); try { localStorage.setItem(PKEY, url); } catch {} return; }   // ليست لقطة سوداء
       }
     } catch (e) { console.warn('poster:', e?.message); return; }
     if (tries > 0 && room) setTimeout(() => grabPoster(tries - 1), 300);
   }
-  const markShape = () => box?.classList.toggle('tall', video.videoHeight > video.videoWidth);
-  video.addEventListener('resize', markShape); video.addEventListener('loadedmetadata', markShape);
   async function loadSdk() {
     if (sdk) return sdk;
     const v = CONFIG.livekitVersion;
-    for (const url of [`https://esm.sh/livekit-client@${v}`, `https://cdn.jsdelivr.net/npm/livekit-client@${v}/+esm`]) {
+    let test = null; try { test = DEBUG && localStorage.getItem('nazih.lksdk'); } catch {}       // للتجربة المحلية فقط (‎?debug=1‎ + مكتبة بديلة)
+    // v35: jsDelivr أولاً (ملف واحد، ويُحمَّل مسبقاً من رأس الصفحة)، وesm.sh احتياطاً (سلسلة ملفات)
+    for (const url of [...(test ? [test] : []), `https://cdn.jsdelivr.net/npm/livekit-client@${v}/+esm`, `https://esm.sh/livekit-client@${v}`]) {
       try { const m = await import(url); if (m.Room) return (sdk = m); } catch (e) { console.warn('LiveKit SDK:', url, e?.message); }
     }
     throw new Error('تعذّر تحميل مكتبة LiveKit');
   }
-  const send = (o) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); } catch {} };
-  /* إقفال الجلسة: «terminate» ثم إغلاق الاتصال، وإلا تبقى الجلسة تُحسب حتى مهلة السكوت عندهم */
-  function close(why) {
-    const r = room, w = ws; room = null; ws = null; playEnd = 0; sending = false;
-    clearInterval(beatT); clearTimeout(idleT); clearTimeout(talkT); talkT = null;
+  const send = (o) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); } catch {} };       // الطريقة القديمة فقط
+  /* ---- قياس (‎?debug=1‎): أين يذهب وقت الاتصال، ومتى يُسمع أول صوت من الوجه فعلاً ---- */
+  const LT = { t: {}, show() { if (!DEBUG) return; const t = this.t, s = (a, b) => (t[a] && t[b] ? ((t[b] - t[a]) / 1000).toFixed(1) + 's' : '-');
+    T.connect = `lemon: tap→room ticket ${s('start', 'ticket')} | room joined ${s('start', 'joined')} | session ready ${s('start', 'session')}${t.srv ? ` (LemonSlice ${(t.srv.create / 1000).toFixed(1)}s + channel ${(t.srv.ws / 1000).toFixed(1)}s)` : ''} | first frame ${s('start', 'frame')}`; T.show(); } };
+  let lipAn = null, lipBuf = null;
+  function watchLip() {                                   // متى يبدأ صوت الوجه فعلاً بعد إرسال أول صوت (= أول حركة شفاه تقريباً، لأن الصوت والفيديو متزامنان)
+    if (!DEBUG || !audio.srcObject) return;
+    try {
+      ensureAudio();
+      const src = audioCtx.createMediaStreamSource(audio.srcObject); lipAn = audioCtx.createAnalyser(); lipAn.fftSize = 512; src.connect(lipAn); lipBuf = new Float32Array(lipAn.fftSize);
+      setInterval(() => {
+        if (!lipAn || !T.marks.faceAudio || T.marks.lip) return;
+        lipAn.getFloatTimeDomainData(lipBuf); let s2 = 0; for (let i = 0; i < lipBuf.length; i++) s2 += lipBuf[i] * lipBuf[i];
+        if (Math.sqrt(s2 / lipBuf.length) > 0.01) T.mark('lip');
+      }, 15);
+    } catch (e) { console.warn('lip meter:', e?.message); }
+  }
+  /* ---- إقفال الجلسة: عند الخادم (أو terminate في الطريقة القديمة)، وإلا تبقى تُحسب حتى مهلة السكوت عندهم ---- */
+  let connGen = 0;                                   // يزيد مع كل إقفال: اتصال كان جارياً وقت الإقفال يُلغى حين يكتمل (لا تبقى جلسة مفتوحة تُحسب)
+  function close(why, tellServer = true) {
+    connGen++; endSeq++;                             // endSeq: طلب «انتهى الجواب» المعلّق لا يعيد ضبط شيء بعد الإقفال
+    const r = room, w = ws, k = key, pk = pendingKey; room = null; ws = null; key = ''; pendingKey = ''; playEnd = 0; sending = false;
+    clearInterval(beatT); clearInterval(keepT); clearTimeout(idleT); clearTimeout(talkT); talkT = null;
+    try { sayAbort?.abort(); } catch {} sayAbort = null;
+    try { tokAbort?.abort(); } catch {} tokAbort = null;
+    if (k && tellServer) beacon(k);
+    if (pk && pk !== k) beacon(pk);                  // جلسة وصل مفتاحها والوجه لم يظهر بعد (أُغلقت الصفحة في هذه اللحظة)
     try { if (w && w.readyState === 1) { w.send(JSON.stringify({ command: 'terminate' })); setTimeout(() => { try { w.close(); } catch {} }, 300); } else w?.close(); } catch {}
     try { r?.disconnect(); } catch {}
     setLive(false); face('idle');
+    if (via === 'lemon') { via = 'own'; own.emit('IDLE'); }
     if (why) console.log('LemonSlice:', why);
   }
-  const armIdle = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (!didTalking && !speakingNow) close('أُقفلت الجلسة بعد السكوت'); else armIdle(); }, CONFIG.lemonIdleSeconds * 1000); };
+  const armIdle = () => { clearTimeout(idleT); if (!live()) return; idleT = setTimeout(() => { if (!live()) return; if (!didTalking && !speakingNow) close('أُقفلت الجلسة بعد السكوت'); else armIdle(); }, CONFIG.lemonIdleSeconds * 1000); };
   function connect() {
     if (live()) return Promise.resolve(true);
     if (connecting) return connecting;
     if (fails >= 3 && performance.now() - lastFail < 120000) return Promise.resolve(false);     // بعد ثلاث محاولات فاشلة: استراحة دقيقتين
-    B.add('simli-connecting'); face('connecting');
+    // v35: لا تظهر صورة نزيه القديمة في وضع lemon أبداً: تبقى صورة الشخصية الجديدة أثناء الاتصال، وعند التعذّر يكمل نزيه بصوته فوقها
+    B.remove('simli-off'); B.add('simli-connecting'); face('connecting');
+    LT.t = { start: performance.now() };
+    try { preRoom?.startAudio?.()?.catch?.(() => {}); } catch {}               // داخل لمسة الزائر: يفك قفل الصوت في iPad/iPhone قبل أي انتظار
+    const myGen = connGen;
+    const cancelled = () => { if (myGen !== connGen) throw new Error('أُلغي الاتصال (رجعت شاشة الترحيب أو أُقفلت الصفحة)'); };
     connecting = (async () => {
-      let r0 = null, w0 = null;
+      let r0 = null, w0 = null, k0 = '';
       try {
-        const { Room, RoomEvent } = await loadSdk();
         let code = ''; try { code = localStorage.getItem('nazih.code') || ''; } catch {}
-        const r = await fetch(`${CONFIG.apiBase}/api/lemon-token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, screen: true }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.ws || !d.token) throw new Error(d.error || 'token');
-        // 1) قناة الصوت إلى LemonSlice
-        w0 = new WebSocket(d.ws);
-        await Promise.race([new Promise((ok, bad) => { w0.onopen = ok; w0.onerror = () => bad(new Error('تعذّر فتح قناة الصوت')); }), sleep(10000).then(() => { throw new Error('انتهت مهلة قناة الصوت'); })]);
-        w0.onmessage = (ev) => {
-          let m = null; try { m = JSON.parse(ev.data); } catch { return; }
-          if (m?.command === 'playback_finished' && w0 === ws && !sending) {               // انتهى نطق الجواب عند الوجه
-            const my = token; clearTimeout(talkT); talkT = setTimeout(() => { if (my === token && !sending) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, 150);
-          }
-        };
-        w0.onclose = () => { if (ws === w0) close('انقطعت قناة الصوت'); };
-        // 2) غرفة LiveKit: فيديو الوجه وصوته المتزامن
-        r0 = new Room({ adaptiveStream: true });
+        const sdkP = loadSdk();                                                    // حُمّلت غالباً من فتح الصفحة
+        sdkP.catch(() => {});
+        tokAbort = new AbortController();
+        const resp = await api('/api/lemon-token', { code, screen: true, v: 2 }, { signal: tokAbort.signal });
+        if (!resp.ok || !resp.body) { const d = await resp.json().catch(() => ({})); throw new Error(d.error || `token ${resp.status}`); }
+        const lines = ndjson(resp);
+        const n1 = await lines.next();
+        if (n1.done || !n1.value) throw new Error('رد ناقص من الخادم');
+        if (n1.value.error) throw new Error(n1.value.error);
+        const d1 = n1.value; LT.t.ticket = performance.now();
+        // غرفة LiveKit: تبدأ الآن بالتوازي مع فتح الجلسة عند LemonSlice
+        const { Room, RoomEvent } = await sdkP;
+        // الغرفة المسخّنة من فتح الصفحة (prepareConnection) تُستعمل مرة واحدة، وبعدها غرفة جديدة
+        r0 = preRoom || new Room(); preRoom = null;
         let gotVideo = null; const firstFrame = new Promise((ok) => { gotVideo = ok; });
         r0.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === 'video') { track.attach(video); video.play?.().catch(() => {}); if (video.readyState >= 2) gotVideo(); else video.addEventListener('loadeddata', () => gotVideo(), { once: true }); }
-          else if (track.kind === 'audio') { track.attach(audio); audio.volume = settings.volume; }
+          else if (track.kind === 'audio') { track.attach(audio); audio.volume = settings.volume; watchLip(); }
         });
         r0.on(RoomEvent.Disconnected, () => { if (room === r0) close('انقطع البث'); });
-        await r0.connect(d.url, d.token);
+        // رسائل LemonSlice في الغرفة: bot_ready (بدأ البث)، metric بعد كل جواب (time_to_first_push = من أول صوت إلى أول صورة)
+        if (RoomEvent.DataReceived) r0.on(RoomEvent.DataReceived, (payload, p, kind, topic) => {
+          if (topic && topic !== 'lemonslice') return;
+          let m = null; try { m = JSON.parse(new TextDecoder().decode(payload)); } catch { return; }
+          if (m?.type === 'bot_ready') { LT.t.botReady = performance.now(); }
+          else if (m?.type === 'metric' && DEBUG) { T.lemon = `face first push ${m.time_to_first_push ?? m.data?.time_to_first_push ?? '?'}${m.tts_audio_delay || m.data?.tts_audio_delay ? ', audio arrived late' : ''}`; T.show(); }
+          else if ((m?.type === 'error' || m?.type === 'video_generation_error') && DEBUG) console.warn('LemonSlice:', m);
+        });
+        const joinP = r0.connect(d1.url, d1.token).then(() => { LT.t.joined = performance.now(); LT.show(); });
+        joinP.catch(() => {});
+        if (d1.url && !d1.ws && !d1.key) {                                    // السطر الثاني: الجلسة جاهزة عند LemonSlice
+          const n2 = await lines.next();
+          if (n2.done || !n2.value) throw new Error('انقطع الرد قبل أن تجهز الجلسة');
+          if (n2.value.error) throw new Error(n2.value.error);
+          Object.assign(d1, n2.value);
+        }
+        try { lines.return?.(); } catch {}
+        LT.t.session = performance.now(); LT.t.srv = d1.ms && d1.ms.ws != null ? d1.ms : null; LT.show();
+        tokAbort = null;
+        if (d1.key) { k0 = pendingKey = d1.key; cancelled(); }
+        else if (d1.ws) {                                                     // الخادم أطفأ الإرسال المباشر: الشاشة ترسل الصوت بنفسها (طريقة v34)
+          w0 = new WebSocket(d1.ws);
+          await Promise.race([new Promise((ok, bad) => { w0.onopen = ok; w0.onerror = () => bad(new Error('تعذّر فتح قناة الصوت')); }), sleep(10000).then(() => { throw new Error('انتهت مهلة قناة الصوت'); })]);
+          w0.onmessage = (ev) => {
+            let m = null; try { m = JSON.parse(ev.data); } catch { return; }
+            if (m?.command === 'playback_finished' && w0 === ws && !sending) {
+              const my = token; clearTimeout(talkT); talkT = setTimeout(() => { if (my === token && !sending) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, 150);
+            }
+          };
+          w0.onclose = () => { if (ws === w0) close('انقطعت قناة الصوت'); };
+        } else throw new Error('رد غير متوقع من الخادم');
+        await joinP; cancelled();
         // LemonSlice يحتاج ثوانٍ ليجهّز الوجه: ننتظر أول صورة قبل اعتباره متصلاً
         await Promise.race([firstFrame, sleep(25000).then(() => { throw new Error('انتهت مهلة ظهور الوجه'); })]);
-        room = r0; ws = w0; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster(); face('live'); armIdle();
-        clearInterval(beatT); beatT = setInterval(() => send({ command: 'heartbeat', timestamp: Date.now() }), 15000);
-        if (window.NAZIH_SCREEN) setTimeout(warmAnswers, 5000);
-        if (DEBUG) { T.connect = 'lemon ' + (performance.now() / 1000).toFixed(1) + 's'; T.show(); }
+        cancelled();
+        LT.t.frame = performance.now(); LT.show();
+        room = r0; ws = w0; key = k0; pendingKey = ''; fails = 0; audio.volume = settings.volume; setLive(true); grabPoster(); face('live'); armIdle();
+        clearInterval(beatT); clearInterval(keepT);
+        if (key) keepT = setInterval(() => { if (key) ctl('keep').then((d) => { if (d.status === 410 && key) close('انتهت الجلسة عند الخادم', false); }); }, 30000);
+        else beatT = setInterval(() => send({ command: 'heartbeat', timestamp: Date.now() }), 15000);
+        if (window.NAZIH_SCREEN) setTimeout(() => warmAnswers(), 3000);
         return true;
       } catch (e) {
+        try { tokAbort?.abort(); } catch {} tokAbort = null;                  // الخادم يُقفل الجلسة إن انصرفت الشاشة قبل أن تجهز
+        if (k0) ctl('terminate', k0, true);
+        if (pendingKey === k0) pendingKey = '';
         try { if (w0 && w0.readyState === 1) w0.send(JSON.stringify({ command: 'terminate' })); w0?.close(); } catch {}
         try { r0?.disconnect(); } catch {}
-        console.warn('LemonSlice connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false); B.add('simli-off');
+        if (myGen !== connGen) { console.log('LemonSlice:', e?.message || e); return false; }     // إلغاء مقصود: ليس تعطلاً
+        // تعذّر: تبقى صورة الشخصية الجديدة ونزيه يكمل بصوته (لا تُضاف simli-off التي تُظهر الصورة القديمة)
+        console.warn('LemonSlice connect:', e?.message || e); fails++; lastFail = performance.now(); setLive(false);
         face('off', String(e?.message || e));
         if (DEBUG) { T.connect = 'lemon FAILED: ' + String(e?.message || e).slice(0, 60); T.show(); setStatus('LemonSlice: ' + (e?.message || e), 'err'); }
         return false;
@@ -1018,6 +1130,7 @@ function makeLemonAvatar(own) {
     })();
     return connecting;
   }
+  /* ---- الطريقة القديمة (الشاشة ترسل الصوت بنفسها) تبقى احتياطاً إن أطفأها الخادم ---- */
   const pcmPending = new Map();
   function pcmFetch(text) {
     let p = pcmPending.get(text);
@@ -1029,56 +1142,113 @@ function makeLemonAvatar(own) {
     }
     return p;
   }
-  /* قطعة صوت → base64 (الصيغة التي يطلبها LemonSlice) */
   const b64 = (u) => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
   const CHUNK = 3200;                                  // 3200 بايت = 0.1 ثانية بتردد 16 كيلوهرتز (المستحسن عندهم 80–100 ملّي ثانية)
+  async function speakViaBrowser(my, input) {
+    let r = null;
+    try { r = await pcmFetch(input); pcmPending.delete(input); } catch {}
+    if (my !== token) return;
+    if (!r || !r.ok || !r.body || !live()) return own.functions.speak({ input });
+    if (DEBUG) { T.voice = r.headers.get('x-tts') || ''; }
+    const reader = r.body.getReader(); let carry = new Uint8Array(0), total = 0, t0 = 0;
+    clearTimeout(talkT); talkT = null; clearTimeout(idleT); sending = true; via = 'lemon';
+    const out = (u) => {
+      send({ command: 'audio', audio: b64(u), sampleRate: 16000, encoding: 'PCM16' });
+      if (!total) { t0 = Math.max(performance.now(), playEnd); audio.volume = settings.volume; T.mark('faceAudio'); own.emit('TALKING'); }
+      total += u.length;
+    };
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (my !== token || !live()) { try { reader.cancel(); } catch {} if (my === token) { sending = false; via = 'own'; own.emit('IDLE'); } return; }
+        if (done) break;
+        const m = new Uint8Array(carry.length + value.length); m.set(carry); m.set(value, carry.length);
+        let i = 0; for (; i + CHUNK <= m.length; i += CHUNK) out(m.slice(i, i + CHUNK));
+        carry = m.slice(i);
+      }
+      if (carry.length >= 2) out(carry.slice(0, carry.length - (carry.length % 2)));
+    } catch (e) { console.warn('LemonSlice stream:', e?.message); }
+    sending = false;
+    if (!total) return own.functions.speak({ input });
+    playEnd = t0 + (total / 32000) * 1000;                                    // 32000 بايت = ثانية صوت
+    clearTimeout(talkT); talkT = setTimeout(() => { if (my === token) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, Math.max(500, playEnd - performance.now() + 5000));
+  }
+  const warm = (text) => { api('/api/tts-pcm', { text, screen: true, warm: true }).catch(() => {}); };
   return {
     own: true, simli: true, lemon: true,
     events: own.events,
-    ensure: connect, preload() { loadSdk().catch(() => {}); },
-    prefetch(text) { if (live()) pcmFetch(text); return live(); },
+    /* من فتح الصفحة (مجاناً، بلا جلسة): تنزيل مكتبة LiveKit وتسخين الاتصال بخادمها (DNS وTLS واختيار أقرب منطقة) */
+    ensure: connect, preload() { loadSdk().then((m) => { if (window.NAZIH_LK_URL && !preRoom && m.Room) { try { preRoom = new m.Room(); Promise.resolve(preRoom.prepareConnection?.(window.NAZIH_LK_URL)).catch(() => {}); } catch {} } }).catch(() => {}); },
+    /* الجملة التالية: صوتها يُجهَّز في الخادم الآن، فيُنطق فور انتهاء الجملة الحالية بلا انتظار */
+    prefetch(text) { if (relay() || (connecting && !ws)) { warm(text); return true; } if (live()) { pcmFetch(text); return true; } return false; },
     functions: {
       async speak({ input }) {
         const my = ++token;
         if (attractOn) return own.functions.speak({ input });                    // ترحيب الخمول بصورة نزيه وصوته: لا يفتح جلسة
-        const ok = live() ? true : await Promise.race([connect(), sleep(CONFIG.lemonConnectWait * 1000).then(() => false)]);
+        /* انتظار قصير للوجه (lemonConnectWait). إن لم يجهز يُنطق الكلام بصوت نزيه نفسه فوق صورة الشخصية فوراً، ويكمل الوجه ما بعده حين يجهز.
+           ولا يُنتظر الاتصال نفسه مرة ثانية في الجواب نفسه (كانت كل جملة تنتظر من جديد فتطول السكتات) */
+        let ok = live();
+        if (!ok && !(connecting && connecting === gaveUpOn)) {
+          ok = await Promise.race([connect(), sleep(CONFIG.lemonConnectWait * 1000).then(() => false)]);
+          if (!ok && connecting) gaveUpOn = connecting;
+        }
         if (my !== token) return;
-        if (!ok || !live()) return own.functions.speak({ input });                // الاحتياطي: صورة نزيه وصوته
-        let r = null;
-        try { r = await pcmFetch(input); pcmPending.delete(input); } catch {}
-        if (my !== token) return;
-        if (!r || !r.ok || !r.body || !live()) return own.functions.speak({ input });
-        if (DEBUG) { T.voice = r.headers.get('x-tts') || ''; }
-        const reader = r.body.getReader(); let carry = new Uint8Array(0), total = 0, t0 = 0;
+        if (!ok || !live()) return own.functions.speak({ input });                // الاحتياطي: صوت نزيه فوق صورة الشخصية
+        if (!relay()) return speakViaBrowser(my, input);
+        const ac = new AbortController(); sayAbort = ac;
         clearTimeout(talkT); talkT = null; clearTimeout(idleT); sending = true; via = 'lemon';
-        const out = (u) => {
-          send({ command: 'audio', audio: b64(u), sampleRate: 16000, encoding: 'PCM16' });
-          if (!total) { t0 = Math.max(performance.now(), playEnd); audio.volume = settings.volume; own.emit('TALKING'); }
-          total += u.length;
-        };
+        let r = null;
+        try { r = await api('/api/lemon-say', { key, text: input, turn }, { signal: ac.signal }); } catch {}
+        if (my !== token) { sending = false; return; }
+        if (!r || r.status === 410 || !r.ok || !r.body) {
+          sending = false; via = 'own';
+          if (r && r.status === 410) close('انتهت الجلسة عند الخادم', false);
+          return own.functions.speak({ input });
+        }
+        let bytes = 0, t0 = 0;
         try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (my !== token || !live()) { try { reader.cancel(); } catch {} if (my === token) { sending = false; via = 'own'; own.emit('IDLE'); } return; }
-            if (done) break;
-            const m = new Uint8Array(carry.length + value.length); m.set(carry); m.set(value, carry.length);
-            let i = 0; for (; i + CHUNK <= m.length; i += CHUNK) out(m.slice(i, i + CHUNK));
-            carry = m.slice(i);
+          for await (const m of ndjson(r)) {
+            if (my !== token) { try { ac.abort(); } catch {} return; }
+            if (m.e === 'first') {
+              t0 = Math.max(performance.now(), playEnd);
+              if (DEBUG) { T.voice = `${m.tts || ''} ${m.cache || ''}, server tts ${m.ms}ms`; }
+              T.mark('faceAudio'); audio.volume = settings.volume;
+              if (!didTalking) own.emit('TALKING');
+            } else if (m.e === 'done' || m.e === 'error') { bytes = m.bytes || 0; if (m.e === 'error') console.warn('lemon-say:', m.error); }
           }
-          if (carry.length >= 2) out(carry.slice(0, carry.length - (carry.length % 2)));
-        } catch (e) { console.warn('LemonSlice stream:', e?.message); }
+        } catch (e) { if (my !== token) return; }
+        if (sayAbort === ac) sayAbort = null;
         sending = false;
-        if (!total) return own.functions.speak({ input });
-        playEnd = t0 + (total / 32000) * 1000;                                    // 32000 بايت = ثانية صوت
-        // احتياط إن لم تصل «playback_finished»: يُعتبر انتهى بعد مدة الصوت وهامش تأخّر الوجه
-        clearTimeout(talkT); talkT = setTimeout(() => { if (my === token) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, Math.max(500, playEnd - performance.now() + 5000));
+        if (my !== token) return;
+        if (!bytes) { via = 'own'; return own.functions.speak({ input }); }      // لم يصل شيء للوجه: صوت نزيه الاحتياطي
+        playEnd = (t0 || performance.now()) + (bytes / 32000) * 1000;
+        // احتياط إن تأخر خبر «انتهى النطق»: يُعتبر انتهى بعد مدة الصوت وهامش تأخّر الوجه
+        clearTimeout(talkT); talkT = setTimeout(() => { if (my === token) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } }, Math.max(800, playEnd - performance.now() + 6000));
       },
-      /* المقطع التالي يُرسل قبل نهاية الحالي بقليل فيتصل الكلام عند الوجه بلا سكتة، ونهاية الجواب كله تُعلَن بـ audio_end (انظر flush) */
-      leadMs() { return via === 'lemon' && live() ? Math.max(0, playEnd - performance.now() - 450) : -1; },
-      flush() { if (via === 'lemon' && live()) send({ command: 'audio_end' }); },
+      /* الإرسال المباشر: الجملة التالية تُرسل فوراً (LemonSlice يصفّها خلف الحالية بلا سكتة). الطريقة القديمة: قبل نهاية الحالية بقليل */
+      leadMs() { return via === 'lemon' && live() ? (relay() ? 0 : Math.max(0, playEnd - performance.now() - 450)) : -1; },
+      /* نهاية الجواب كله: audio_end، ثم يبقى «يتكلم» حتى يخبر LemonSlice أنه خلص النطق فعلاً (فلا يُفتح المايك على آخر كلمة) */
+      flush() {
+        if (via !== 'lemon' || !live()) return;
+        if (!relay()) { send({ command: 'audio_end' }); return; }
+        const my = token, seq = ++endSeq;
+        ctl('end', key, false, { turn }).then((d) => {
+          if (my !== token || seq !== endSeq) return;
+          if (d.status === 410) { close('انتهت الجلسة عند الخادم', false); return; }
+          if (d.status !== 200) return;              // تعثّر الطلب (شبكة، إعادة تشغيل): يبقى الاحتياط «مدة الصوت + 6 ثوانٍ» هو الذي يعلن السكوت
+          const goIdle = () => { if (my === token && seq === endSeq) { talkT = null; via = 'own'; own.emit('IDLE'); armIdle(); } };
+          const rest = playEnd - performance.now();
+          clearTimeout(talkT);
+          // لا يُعلَن «سكت» قبل موعد نهاية الصوت المتوقع (الجواب الطويل أو خبر «انتهى» يخص جواباً قبله)
+          if (!d.estimated && rest < 1500) goIdle(); else talkT = setTimeout(goIdle, Math.max(300, rest + 1200));
+        });
+      },
       interrupt() {
-        token++; sending = false; clearTimeout(talkT); talkT = null; playEnd = 0;
-        if (via === 'lemon') send({ command: 'interrupt' });
+        const wasLemon = via === 'lemon' || sending || playEnd > performance.now() - 5000;
+        token++; sending = false; clearTimeout(talkT); talkT = null; playEnd = 0; endSeq++;
+        try { sayAbort?.abort(); } catch {} sayAbort = null;
+        // دور جديد: أول جملة بعد المقاطعة تحمل رقمه فتُطبَّق المقاطعة قبلها في الخادم مهما كان ترتيب وصول الطلبين
+        if (wasLemon) { if (relay()) { turn++; ctl('interrupt', key, false, { turn }); } else send({ command: 'interrupt' }); }
         via = 'own'; own.functions.interrupt();
         if (live()) armIdle();
       },
@@ -1088,7 +1258,7 @@ function makeLemonAvatar(own) {
   };
 }
 if (OWN) window.DID_AGENTS_API = window.NAZIH_SIMLI ? (window.NAZIH_LEMON ? makeLemonAvatar(makeOwnAvatar()) : makeSimliAvatar(makeOwnAvatar())) : makeOwnAvatar();
-if (OWN && window.NAZIH_SIMLI) setTimeout(() => window.DID_AGENTS_API.preload(), 1200);   // مكتبة الوجه الحي تُحمَّل من فتح الصفحة (مجاناً) فيقصر الانتظار بعد اللمسة
+if (OWN && window.NAZIH_SIMLI) setTimeout(() => window.DID_AGENTS_API.preload(), window.NAZIH_LEMON ? 0 : 1200);   // مكتبة الوجه الحي تُحمَّل من فتح الصفحة (مجاناً) فيقصر الانتظار بعد اللمسة
 window.addEventListener('pagehide', () => { try { window.DID_AGENTS_API?.stop?.(); } catch {} });
 
 /* طابور النطق: ينطق أول جملة فور وصولها ثم بقية الرد.
@@ -1138,11 +1308,12 @@ function makeSpeaker() {
         await (buf ? playBuffer(buf) : browserSpeak(text));
       }
     } catch (e) { console.warn('speak:', e); }
-    finally { if (live()) { speakingNow = false; lastSpokeAt = performance.now(); if (!did) setTalking(false); try { did?.functions?.flush?.(); } catch {} resetIdle(); } }   // flush: نهاية الجواب كله (وضع lemon فقط)
+    // flush: نهاية الجواب كله (وضع lemon فقط). v35: resetIdle(attractOn): عبارة ترحيب الخمول لا تُنهي شاشة الترحيب (كانت تختفي بعد كل عبارة)
+    finally { if (live()) { speakingNow = false; lastSpokeAt = performance.now(); if (!did) setTalking(false); try { did?.functions?.flush?.(); } catch {} resetIdle(attractOn); } }
   })();
   const kick = () => { const w = wake; wake = null; if (w) w(); };
   return {
-    push(t) { t = (t || '').trim(); if (!t) return; q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2 && !did?.prefetch?.(t)) tts(t); kick(); },
+    push(t) { t = (t || '').trim(); if (!t) return; noteSaid(t); q.push(t); if ((!did || did.own) && settings.voice && q.length <= 2 && !did?.prefetch?.(t)) tts(t); kick(); },
     end() { done = true; kick(); return run; },
   };
 }
@@ -1160,16 +1331,24 @@ async function speak(text) {
   speechParts(text).forEach((x) => sp.push(x));
   await sp.end();
 }
-/* v34: صوت الأجوبة الجاهزة يُجهَّز في ذاكرة الخادم بعد أول اتصال للوجه الحي (وقت الفراغ فقط)، فيُنطق فوراً حين يختارها زائر.
-   التكلفة: مرة واحدة بعد كل تشغيل للخادم. */
-let warmedAnswers = false;
+/* v34: صوت الأجوبة الجاهزة يُجهَّز في ذاكرة الخادم (وقت الفراغ فقط)، فيُنطق فوراً حين يختارها زائر.
+   v35: يُجهَّز من فتح الصفحة على الشاشة الرئيسية (لا بعد أول اتصال)، في الخادم فقط بلا تنزيل الصوت إلى الشاشة،
+   ويُعاد كل 20 دقيقة على الأكثر (إن أُعيد تشغيل الخادم ضاعت ذاكرته). المكرر في الذاكرة لا يُطلب من مزوّد الصوت. التكلفة: مرة بعد كل تشغيل للخادم. */
+let warmedAt = 0, warming = false;
 async function warmAnswers() {
-  if (warmedAnswers) return; warmedAnswers = true;
-  const m = ackMode();
-  for (const b of BANK) for (const part of speechParts(m === 'never' ? b.a.replace(ACK_LEAD, '') : b.a)) {
-    while (nazihActive() || autoMic?.recording || recState) await sleep(2000);
-    try { const r = await fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: part, screen: SCREEN }) }); await r.arrayBuffer(); if (!r.ok) return; } catch { return; }
-  }
+  if (warming || (warmedAt && performance.now() - warmedAt < 20 * 60 * 1000)) return;
+  warming = true;
+  try {
+    const m = ackMode();
+    for (const b of BANK) for (const part of speechParts(m === 'never' ? b.a.replace(ACK_LEAD, '') : b.a)) {
+      while (nazihActive() || autoMic?.recording || recState) await sleep(2000);
+      // wait: الخادم يرد بعد اكتمال توليد المقطع، فتُجهَّز المقاطع واحداً بعد الآخر ولا تُطلب كلها من مزوّد الصوت في نفس اللحظة
+      const r = await fetch(`${CONFIG.apiBase}/api/tts-pcm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: part, screen: SCREEN, warm: true, wait: true }) });
+      if (r.status !== 204) await r.arrayBuffer();               // خادم قديم لا يعرف warm: يرسل الصوت كاملاً
+      if (!r.ok) return;
+    }
+    warmedAt = performance.now();
+  } catch {} finally { warming = false; }
 }
 
 let fillerI = Math.floor(Math.random() * 3);
@@ -1478,6 +1657,21 @@ async function ask(text, item = null) {
         // رد متدفق: ننطق أول جملة فور اكتمالها بدل انتظار الرد كله
         const reader = r.body.getReader(), dec = new TextDecoder();
         let full = '', spoken = 0;
+        // D-ID الحقيقي يحتاج 1–2 ثانية ليبدأ كل مقطع، فيبقى له سلوك v34 (الجملة الأولى ثم الباقي دفعة واحدة). الوجوه الأخرى تصف المقاطع بلا سكتة
+        const incremental = !did || did.own || !!did.functions?.leadMs;
+        /* v35: كل جملة تكتمل تذهب للنطق فوراً والعقل ما زال يكتب ما بعدها. كان كل ما بعد الجملة الأولى ينتظر اكتمال الجواب كله،
+           فيسكت نزيه بعد أول جملة حتى ينتهي العقل من الكتابة (سبب للتقطع). الخادم يرسل الجواب جملة كاملة جملة كاملة. */
+        const pushReady = (ans, final) => {
+          const rest = ans.slice(spoken);
+          if (final) { if (rest.trim()) splitForSpeech(rest, speechChunk()).forEach((x) => sp.push(x)); spoken = ans.length; return; }
+          let end = -1; const re = /[.؟?!؛\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/g; let m;
+          while ((m = re.exec(rest))) end = m.index + 1;
+          if (end < 0) return;
+          const ready = rest.slice(0, end);
+          if (ready.trim().length < 20) return;          // جملة قصيرة جداً: تنتظر ما بعدها حتى لا يتقطع الصوت مقاطع صغيرة
+          splitForSpeech(ready, speechChunk()).forEach((x) => sp.push(x));
+          spoken += end;
+        };
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -1485,15 +1679,17 @@ async function ask(text, item = null) {
           full += dec.decode(value, { stream: true });
           const ans = full.split('§')[0];
           if (!firstSaid) {
-            const m1 = /[.؟?!\n]/.exec(ans.slice(18)), m2 = /[،؛:]/.exec(ans.slice(45));
+            /* v35: الخادم يرسل الجملة كاملة بلا مسافة بعدها، فتُقبل نهاية الجملة في آخر ما وصل أيضاً (كانت الأولى تنتظر وصول الثانية) */
+            const m1 = /[.؟?!\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/.exec(ans.slice(18)), m2 = /[،؛:](?=\s)/.exec(ans.slice(45));
             const cut = Math.min(m1 ? 18 + m1.index + 1 : Infinity, m2 ? 45 + m2.index + 1 : Infinity);
-            if (cut < full.length) {
+            if (cut <= ans.length) {
               spoken = cut;
               T.mark('firstText'); clearTimeout(fillT); firstSaid = true;
               if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; }
               sp.push(ans.slice(0, spoken));
+              if (incremental) pushReady(ans, false);           // ما اكتمل بعدها في نفس الدفعة يُرسل الآن أيضاً
             }
-          }
+          } else if (incremental) pushReady(ans, false);
           if (ans.trim()) showCaption(text, ans.trim());
         }
         const [ans, extra = ''] = full.split('§');
@@ -1502,7 +1698,7 @@ async function ask(text, item = null) {
         suggestions = extra.split('|').map((x) => x.trim().replace(/^[-•\s]+/, '')).filter((x) => x.length > 3 && x.length < 70).slice(0, 2);
         clearTimeout(fillT); firstSaid = true;
         if (!sp) { stopSpeaking(); sp = makeSpeaker(); streamed = sp; }
-        splitForSpeech(ans.slice(spoken), speechChunk()).forEach((x) => sp.push(x));
+        pushReady(ans, true);
       } else {
         clearTimeout(fillT); firstSaid = true; streamed = null;
         const data = await r.json();
@@ -1615,6 +1811,7 @@ carousel.addEventListener('scroll', () => {
 /* ---------------- التسجيل الصوتي ---------------- */
 let recState = null;
 micBtn.addEventListener('click', () => {
+  if (HOLD && did && CONFIG.ownBrain) return;  // v35: «اضغط وتكلّم» يعمل بالضغط المستمر (انظر pointerdown)، لا بالنقر
   if (did && CONFIG.ownBrain) {               // عقل الموقع: الزر يسجّل سؤال الزائر ثم يتوقف تلقائياً عند الصمت
     buzz(15);
     if (recState) { recState.stop(); return; }
@@ -1690,9 +1887,58 @@ let pendingQ = '', pendingN = 0, pendingT = null;
 const DANGLING = /(?:\.{2,}|…)\s*$|(?:^|\s)(?:و|أو|او|ثم|بين|من|في|على|عن|الى|إلى|مع|وال|ال|بال|لل|وبين|ولا|لو|اذا|إذا|الذي|التي|لكن)\s*$/;
 const DANGLING_WAIT = 1800;                  // كم ينتظر نزيه تكملة السؤال الناقص (كان 5000)
 /* تحويل التسجيل إلى نص ثم سؤال نزيه. quiet=true في الاستماع التلقائي: يتجاهل ما لا يُفهم بدون رسالة خطأ */
-const STT_NOISE = ['اشتركوا في القناه', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching'];
+const STT_NOISE = ['اشتركوا في القناه', 'لا تنسوا الاشتراك', 'ترجمه نانسي', 'شكرا للمشاهده', 'شكرا علي المشاهده', 'شكرا لكم علي المشاهده', 'موسيقي', 'تصفيق', 'ترجمه', 'subtitles', 'thank you for watching', 'thanks for watching'];
+/* v35: نص لا يُبنى عليه جواب. أنواعه: empty (لا كلام)، noise (نص من الضجيج أو مما «يتخيله» النموذج)، echo (صوت نزيه نفسه رجع من السماعة)،
+   unclear (السمع ضعيف: احتمال الكلمات منخفض). عند الشك لا يخمّن نزيه: يتجاهل الضجيج، أو يقول «ما سمعتك زين، ممكن تعيد؟» إن كان الزائر يكلّمه فعلاً. */
+const stripAl = (w) => w.replace(/^(وال|بال|لل|ال|و)(?=.{3})/, '');
+const words3 = (s) => norm(s).replace(/[^ء-ي\s]/g, ' ').split(/\s+/).map(stripAl).filter((w) => w.length >= 3);
+const STT_PROMPT_WORDS = new Set(words3('سؤال لنزيه عن النزاهة ومكافحة الفساد: نزاهة، الرشوة، الفساد، البلاغ، المبلّغ، الاختلاس، غسل الأموال، التزوير، المال العام، هيئة الرقابة ومكافحة الفساد، الخدمة المدنية، الانضباط الوظيفي، جامعة حائل.'));
+const ASKING = /(?:^|\s)(?:وش|ايش|شو|كيف|ليش|لماذا|ماذا|متي|هل|كم|وين|اين|ما|من|ابي|ابغي|ابغا|اريد|عطني|اعطني|قول|اشرح|وضح|عرف|يعني)(?:\s|$)/;
+const ASK_START = /^\s*(?:و|ف)?(?:وش|ايش|شو|كيف|ليش|لماذا|ماذا|متي|هل|كم|وين|اين|ما|من|ابي|ابغي|ابغا|اريد|عطني|اعطني|قول|اشرح|وضح|عرف|طيب|زين|طب)(?:\s|$)/;
+const SHORT_OK = /^(?:اي|ايه|ايوه|ايوا|اكيد|نعم|لا|لا شكرا|تم|طيب|زين|كمل|شكرا|مشكور)$/;     // ردود قصيرة صحيحة («تبي أفصّل؟» ← «إي»)
+let recentSaid = '', recentSaidAt = 0;           // ما قاله نزيه للتو (لكشف صوته المرتد من السماعة)
+function noteSaid(t) {
+  const now = performance.now();
+  if (now - Math.max(recentSaidAt, lastTalkEnd) > 20000 && !speakingNow && !didTalking) recentSaid = '';     // لا يُمسح ونزيه ما زال يتكلم
+  recentSaid = (recentSaid + ' ' + t).slice(-1500); recentSaidAt = now;
+}
+let lastInteractAt = 0;                          // آخر لمسة أو سؤال مقبول من زائر
+const recentVisitor = () => performance.now() - lastInteractAt < 45000;
+['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, () => { lastInteractAt = performance.now(); }, { passive: true }));
+const trigrams = (ws) => { const s = new Set(); for (let i = 0; i + 2 < ws.length; i++) s.add(ws[i] + ' ' + ws[i + 1] + ' ' + ws[i + 2]); return s; };
+const inOrder = (ws, said) => { let j = 0; for (const w of said) { if (w === ws[j]) j++; if (j === ws.length) return true; } return false; };
+function sttVerdict(text, conf, meta = {}) {
+  const n = norm(text), ar = (n.match(/[ء-ي]/g) || []).length, la = (n.match(/[a-z]/g) || []).length;
+  const bare = n.replace(/[^ء-ي\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  // «إي» أو «لا» جواباً على سؤال سأله نزيه للتو، أو بالضغط على الزر: رد صحيح وليس ضجيجاً
+  if (SHORT_OK.test(bare) && (meta.explicit || (performance.now() - Math.max(recentSaidAt, lastTalkEnd) < 15000 && /[؟?]\s*$/.test(recentSaid.trim())))) return null;
+  if (!text || ar < 3) return 'empty';
+  if (la > ar) return 'noise';                                                       // «Thank you.» وأشباهها من ضجيج القاعة
+  if (STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 14)) return 'noise';
+  if (/سؤال لنزيه|لنزيه عن النزاهه/.test(n)) return 'noise';                         // أول جملة من تعليمات التحويل نفسها (لا يقولها زائر)
+  const ws = words3(text);
+  if (ws.length >= 4) { let run = 1; for (let i = 1; i < ws.length; i++) { run = ws[i] === ws[i - 1] ? run + 1 : 1; if (run >= 4) return 'noise'; } }   // كلمة تتكرر
+  if (ws.length >= 3 && ws.filter((w) => STT_PROMPT_WORDS.has(w)).length / ws.length >= 0.8 && !ASKING.test(n)) return 'noise';   // كتب النموذج قائمة المفردات نفسها
+  /* صوت نزيه الراجع: يُفحص فقط في تسجيل بدأ ونزيه يتكلم (المقاطعة بالصوت)، لأنه وحده يمكن أن يحوي صوته (بعد سكوته يُقفل المايك 0.8 ثانية).
+     ويلزم دليل قوي: ثلاث كلمات متتالية من كلامه بالترتيب في 70% من النص فأكثر، ولا يبدأ بأداة سؤال. فالسؤال الذي يقتبس كلامه يُجاب */
+  if (meta.nearTalk && recentSaid && !ASK_START.test(n)) {
+    const said = words3(recentSaid);
+    if (ws.length >= 4) { const sg = trigrams(said), mine = [...trigrams(ws)], hit = mine.filter((g) => sg.has(g)).length; if (hit >= Math.min(3, mine.length) && hit / mine.length >= 0.7) return 'echo'; }
+    else if (ws.length && inOrder(ws, said)) return 'echo';
+  }
+  if (conf && Number.isFinite(conf.avg) && (conf.avg < -1.1 || conf.low > 0.4)) return 'unclear';
+  return null;
+}
+let askRepeatAt = 0;
+function askRepeat() {                           // بدل التخمين: يطلب من الزائر أن يعيد (مرة كل 6 ثوانٍ على الأكثر)
+  if (performance.now() - askRepeatAt < 6000) { setStatus(HOLD ? pttIdleLabel() : CONFIG.idleStatus); return; }
+  askRepeatAt = performance.now();
+  const line = 'ما سمعتك زين، ممكن تعيد؟';
+  showCaption('', line); setStatus(HOLD ? pttIdleLabel() : CONFIG.idleStatus); speak(line);
+}
 let sttBusy = false;
-async function processSpeech(blob, quiet, loudMs = 0) {
+/* meta: كيف بدأ التسجيل (explicit = بالزر أو «اضغط وتكلّم»)، ومدة الكلام فيه وقوته فوق ضجيج المكان (snr)؛ تقرر عند الشك: يُعاد السؤال أم يُتجاهل الضجيج */
+async function processSpeech(blob, quiet, loudMs = 0, meta = {}) {
   setStatus('جاري تحويل كلامك لنص...'); setBusy(true);
   const my = session;
   startEarlyFill(quiet, loudMs);
@@ -1705,9 +1951,20 @@ async function processSpeech(blob, quiet, loudMs = 0) {
     sttBusy = false;
     if (my !== session) { dropEarlyFill(); return; }
     T.mark('sttDone');
-    const text = (data.text || '').trim(), n = norm(text);
-    const junk = !text || (quiet && (n.replace(/\s/g, '').length < 4 || STT_NOISE.some((x) => n.includes(x) && n.length < x.length + 12)));
-    if (junk) { dropEarlyFill(); if (!pendingQ) setStatus(quiet ? CONFIG.idleStatus : 'ما فهمتك، حاول مرة ثانية 😊', quiet ? '' : 'err'); return; }
+    if (DEBUG) { T.stt = `server ${data.ms ?? '?'}ms${data.conf ? `, conf ${data.conf.avg} low ${data.conf.low}` : ''}`; T.show(); }
+    const text = (data.text || '').trim();
+    const v = sttVerdict(text, data.conf, meta);
+    if (v) {
+      dropEarlyFill();
+      if (DEBUG) console.log('stt ignored:', v, JSON.stringify(text), data.conf || '');
+      /* الزائر يكلّم نزيه فعلاً (ضغط الزر، أو كلام طويل وواضح فوق ضجيج المكان وهناك زائر يتحاور قبل قليل) لكن ما انفهم: يطلب الإعادة.
+         غير ذلك ضجيج يُتجاهل بصمت (لا يرد نزيه على القاعة)، ويتعلّم المايك أن هذا المستوى ضجيج في هذا المكان */
+      const talkingToUs = (meta.explicit ?? !quiet) || ((meta.voicedMs || loudMs) >= 900 && (meta.snr || 0) >= 4 && v !== 'empty' && recentVisitor());
+      if (!talkingToUs && (v === 'noise' || v === 'empty')) autoMic?.learnNoise?.();
+      if (!pendingQ) { if (v !== 'echo' && talkingToUs) askRepeat(); else setStatus(HOLD ? pttIdleLabel() : CONFIG.idleStatus); }
+      return;
+    }
+    lastInteractAt = performance.now();               // سؤال مفهوم: زائر يتحاور الآن
     // سؤال انقطع في منتصفه (الزائر توقف ليفكر): نحتفظ به وننتظر التكملة، ثم نرسل الجملة كاملة
     const full = (pendingQ ? pendingQ + (/(?:^|\s)(?:و?ال|بال|لل)$/.test(pendingQ) ? '' : ' ') : '') + text;      // «وال» + «هدية» = «والهدية»
     clearTimeout(pendingT);
@@ -1735,81 +1992,169 @@ async function processSpeech(blob, quiet, loudMs = 0) {
 
 /* ---------------- الاستماع التلقائي (بدون ضغط) ----------------
    المايك يبقى مفتوحاً للموقع فقط، ويبدأ التسجيل عند سماع كلام واضح قريب، ويتوقف بعد الصمت.
-   يتوقف عن السمع تماماً ونزيه يتكلم أو يفكر حتى لا يسمع نفسه، ويتكيّف مع ضجيج المكان. */
+   يتوقف عن السمع تماماً ونزيه يتكلم أو يفكر حتى لا يسمع نفسه، ويتكيّف مع ضجيج المكان.
+   v35 (قاعة مزدحمة) — جُرّب بمحاكاة 20 دقيقة لكل حالة: هدوء، جمع كثير، شخصان يتحادثان قرب الشاشة، تصفيق مفاجئ:
+   - المستوى يُقاس في نطاق الصوت البشري فقط (250–3600 هرتز)، فلا يُحسب هدير التكييف والخطوات وطبول الموسيقى.
+   - ضجيج المكان بمقياسين: القريب (آخر 5 ثوانٍ والمايك لا يسجّل: «أرضيته» و«أعلاه المعتاد»)، والأوسع (وسيط آخر 30 ثانية،
+     ويدخل فيه ما رُفض من تسجيلات لأنه ليس كلام زائر). فيتعلّم صوت من يتحادثون قرب الشاشة ولا يحسبه سؤالاً.
+   - يبدأ التسجيل بصوت أعلى من الضجيج المعتاد بنحو 4 ديسيبل، ويُعدّ الزائر «ما زال يتكلم» ما دام صوته أعلى منه بنحو 3 ديسيبل
+     في إطارين من كل ثلاثة (فلا تمدّ قمم الضجيج المتفرقة التسجيل بعد أن يسكت)، ويُقبل إن كان فيه كلام كافٍ (0.4 ثانية) منه
+     0.2 ثانية أعلى من الضجيج بنحو 6 ديسيبل. والطرقة أو الضحكة القصيرة تُلغى فوراً، والتسجيل التلقائي لا يتجاوز 12 ثانية.
+   - ما يرفضه التحويل لنص لأنه ضجيج يُضاف لضجيج المكان أيضاً، فلا يتكرر.
+   - الصوت وحده لا يُعدّ تفاعلاً: لا يظهر «أسمعك» ولا يُفتح الوجه الحي (المحسوب بالدقيقة) ولا يُؤجَّل الرجوع لشاشة الترحيب إلا بكلام مؤكد،
+     ولا يُفتح الوجه بالصوت إلا إن كان هناك زائر يتحاور خلال آخر 45 ثانية (وإلا يُفتح حين يُقبل سؤاله).
+   - بعد أن يسكت نزيه بـ 0.8 ثانية فقط يبدأ السمع (لا يلتقط صدى آخر كلمة)، والمقاطعة بالصوت تحتاج صوتاً أعلى من صوت نزيه الراجع للمايك بوضوح. */
 let autoMic = null;
 async function startAutoListen() {
-  if (autoMic || !CONFIG.handsFree || !did || !CONFIG.ownBrain) return;
+  if (autoMic || !(CONFIG.handsFree || HOLD) || !did || !CONFIG.ownBrain) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return;
   let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: CONFIG.micAgc !== false, channelCount: 1 } }); }
   catch { setStatus('اسمح للمتصفح باستخدام المايك، أو اضغط زر التحدث', 'err'); return; }
   if (autoMic) { stream.getTracks().forEach((t) => t.stop()); return; }
   ensureAudio();
   const src = audioCtx.createMediaStreamSource(stream);
-  const an = audioCtx.createAnalyser(); an.fftSize = 512; src.connect(an);
-  const buf = new Uint8Array(an.fftSize);
+  const an = audioCtx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0; src.connect(an);
+  const tb = new Float32Array(an.fftSize), fb = new Float32Array(an.frequencyBinCount);
+  const binHz = audioCtx.sampleRate / an.fftSize, b0 = Math.max(1, Math.round(250 / binHz)), b1 = Math.min(fb.length - 1, Math.round(3600 / binHz));
   const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
-  let noise = 0.012, rec = null, chunks = [], loudMs = 0, lastLoud = 0, startedAt = 0, last = performance.now(), forced = false, barge = false;
-  const finish = (keep) => {
-    const r = rec, heard = loudMs; if (!r) return;
-    if (keep) { T.reset(); T.marks.lastWord = lastLoud; T.mark('recEnd'); }
-    rec = null; forced = false; barge = false; micLevel = 0; micBtn.classList.remove('listening');
-    const parts = chunks; chunks = [];
-    r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), true, heard) : null;
-    try { r.stop(); } catch {}
-    if (!keep) setStatus(CONFIG.idleStatus);
+  const hist = [], wide = [], echo = [], above = []; let floor = 0.006, amb = 0.008, bg = 0, echoLvl = 0, lastSort = 0, recAll = [], lastAll = [];
+  const pct = (arr, p) => { if (!arr.length) return 0; const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+  const learn = () => {
+    if (hist.length >= 20) { floor = Math.max(0.003, pct(hist, 0.15), pct(hist.slice(-40), 0.15)); amb = Math.max(floor, pct(hist, 0.8)); }
+    if (wide.length >= 40) bg = pct(wide, 0.5);
   };
-  const begin = (now) => {
+  const near = (x) => { hist.push(x); if (hist.length > 100) hist.shift(); };          // آخر 5 ثوانٍ
+  const far = (x) => { wide.push(x); if (wide.length > 600) wide.shift(); };           // آخر 30 ثانية
+  const room = (x) => { near(x); far(x); };                                             // صوت المكان: لا زائر يتكلم ولا نزيه
+  let rec = null, chunks = [], voicedMs = 0, strongMs = 0, peak = 0, lastVoiced = 0, startedAt = 0, last = performance.now(), forced = false, barge = false, bargeRec = false, hold = false, holdStart = 0, confirmed = false;
+  const idle = () => (HOLD ? pttIdleLabel() : CONFIG.idleStatus);
+  // learnIt: التسجيل رُفض لأنه ليس كلام زائر، فالأهدأ من نصفه (ما بين الكلمات) صوتٌ للمكان
+  const finish = (keep, learnIt = false) => {
+    const r = rec, heard = voicedMs; if (!r) return;
+    const meta = { explicit: forced || hold, voicedMs, snr: amb > 0 ? +(peak / amb).toFixed(1) : 0, nearTalk: barge || bargeRec };
+    if (keep) { T.reset(); T.marks.lastWord = lastVoiced || performance.now(); T.mark('recEnd'); lastAll = meta.explicit || bargeRec ? [] : recAll; }
+    else if (learnIt && recAll.length) { for (const x of recAll.slice().sort((a, b) => a - b).slice(0, Math.ceil(recAll.length / 2))) far(x); learn(); }
+    rec = null; forced = false; barge = false; bargeRec = false; hold = false; confirmed = false; recAll = []; above.length = 0; micLevel = 0; micBtn.classList.remove('listening');
+    const parts = chunks; chunks = [];
+    r.onstop = keep ? () => processSpeech(new Blob(parts, { type: r.mimeType || 'audio/webm' }), !meta.explicit, heard, meta) : null;
+    try { r.stop(); } catch {}
+    if (!keep) setStatus(idle());
+  };
+  const showListening = () => { micBtn.classList.add('listening'); setStatus(hold ? 'أسمعك… اترك الزر إذا خلصت' : 'أسمعك... تكلّم الآن', 'listening'); };
+  /* كلام مؤكد (لا مجرد صوت عابر): عندها فقط يُعدّ تفاعلاً */
+  const confirm = () => { if (confirmed) return; confirmed = true; if (recentVisitor()) ensureDidConnected('speech'); resetIdle(attractOn); showListening(); };
+  const begin = (now, how = '') => {
     chunks = []; const mine = chunks;
     rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
     rec.ondataavailable = (e) => e.data.size && mine.push(e.data);
-    rec.start(); startedAt = now; lastLoud = now; loudMs = 0;
+    rec.start(); startedAt = now; lastVoiced = now; voicedMs = 0; strongMs = 0; peak = 0; recAll = []; above.length = 0; confirmed = false;
+    if (how === 'hold') { hold = true; holdStart = now; }
     if (barge) return;                                       // تسجيل صامت أثناء كلام نزيه (مقاطعة محتملة)
-    ensureDidConnected();                                    // جهّز الأفتار أثناء كلام الزائر
-    resetIdle();
-    micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
+    if (forced || hold) { confirmed = true; ensureDidConnected('speech'); resetIdle(attractOn); showListening(); }   // ضغط الزر: تفاعل مؤكد
   };
-  const blocked = () => busy || speakingNow || didTalking || recState || document.hidden || performance.now() - lastSpokeAt < 700;
+  const talkingNow = () => speakingNow || didTalking;
   const timer = setInterval(() => {
     if (audioCtx.state === 'suspended') return;
     const now = performance.now(), dt = Math.min(200, now - last); last = now;
-    an.getByteTimeDomainData(buf);
-    let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-    const rms = Math.sqrt(sum / buf.length);
-    // v34: المقاطعة تعمل أيضاً ونزيه «يفكر» (busy)، فيقدر الزائر يصحح سؤاله قبل أن يبدأ الجواب
-    //      (لا أثناء تحويل كلامه لنص: قد يكون ما زال يكمل جملته) ولا أثناء كلمة الافتتاح (أصوات القاعة لا تقطعها)
-    if (CONFIG.bargeIn && !speechMode && (speakingNow || didTalking || (busy && !sttBusy)) && !recState && !document.hidden) {
-      // المقاطعة بالصوت: يلزم صوت قريب وواضح (أعلى بكثير من صوت نزيه المرتد من السماعة) لنصف ثانية متصلة تقريباً
-      const loudB = rms > Math.max(0.10, noise * 5);
-      if (!rec) { if (loudB) { barge = true; begin(now); } return; }
+    an.getFloatTimeDomainData(tb); let s2 = 0; for (let i = 0; i < tb.length; i++) s2 += tb[i] * tb[i];
+    const rms = Math.sqrt(s2 / tb.length);
+    an.getFloatFrequencyData(fb); let sb = 0, all = 0;
+    for (let i = 1; i < fb.length; i++) { const p = Math.pow(10, fb[i] / 10); all += p; if (i >= b0 && i <= b1) sb += p; }
+    const lvl = all > 0 ? rms * Math.sqrt(sb / all) : rms;                 // مستوى الكلام في نطاق الصوت البشري
+    // الأرضية = الأعلى من: آخر 5 ثوانٍ وآخر ثانيتين. فتصعد بسرعة إن ارتفع ضجيج القاعة فجأة، وتنزل بهدوء
+    if (now - lastSort > 500) { lastSort = now; learn(); echoLvl = pct(echo, 0.7); if (DEBUG) T.mic = `floor ${floor.toFixed(3)} amb ${amb.toFixed(3)} bg ${bg.toFixed(3)} echo ${echoLvl.toFixed(3)} now ${lvl.toFixed(3)}`; }
+    // ---- اضغط وتكلّم: التسجيل بيد الزائر فقط ----
+    if (HOLD) {
+      if (!rec) { if (!talkingNow() && !busy) room(lvl); return; }
+      micLevel += (Math.min(1, rms * 8) - micLevel) * 0.4;
+      if (lvl > Math.max(0.02, floor * 2)) { voicedMs += dt; lastVoiced = now; peak = Math.max(peak, lvl); }
+      if (now - startedAt > CONFIG.talkMaxSeconds * 1000) finish(true);
+      return;
+    }
+    // ---- المقاطعة بالصوت أثناء كلام نزيه أو تفكيره ----
+    if (CONFIG.bargeIn && !speechMode && (talkingNow() || (busy && !sttBusy)) && !recState && !document.hidden) {
+      if (talkingNow() && !rec) { echo.push(lvl); if (echo.length > 60) echo.shift(); }        // صوت نزيه كما يصل للمايك بعد إلغاء الصدى (آخر 3 ثوانٍ)
+      // المقاطعة تحتاج صوتاً قريباً واضحاً: أعلى من ضجيج القاعة ومن صوت نزيه الراجع بوضوح، لـ 0.7 ثانية متصلة تقريباً
+      const onB = Math.max(0.14, floor * 5, amb * 2.5, bg * 3, echoLvl * 3), holdB = Math.max(0.09, floor * 3, amb * 1.6, bg * 2, echoLvl * 2.2);
+      if (!rec) { if (busy && !talkingNow()) room(lvl); if (lvl > onB) { barge = true; begin(now); voicedMs = dt; peak = lvl; lastVoiced = now; } return; }   // وقت التفكير: المايك يسمع القاعة فقط فيُقاس ضجيجها
       if (barge) {
-        if (loudB) { loudMs += dt; lastLoud = now; }
-        if (loudMs >= 500) {
-          barge = false; interrupt();
-          micBtn.classList.add('listening'); setStatus('أسمعك... تكلّم الآن', 'listening');
-        } else if (now - lastLoud > 400) finish(false);
+        if (lvl > holdB) { voicedMs += dt; lastVoiced = now; peak = Math.max(peak, lvl); }
+        if (voicedMs >= 700) { barge = false; bargeRec = true; confirmed = true; interrupt(); resetIdle(attractOn); showListening(); }
+        else if (now - lastVoiced > 350 || now - startedAt > 1600) finish(false);
         return;
       }
     }
-    if (blocked()) { if (rec) finish(false); return; }
-    const thr = Math.max(CONFIG.autoMinLevel, noise * 3), loud = rms > thr;
-    noise += (rms - noise) * (loud ? 0.002 : 0.05);            // تقدير ضجيج المكان
-    if (!rec) { if (!loud) return; begin(now); }
+    if (busy || talkingNow() || recState || document.hidden) { if (rec) finish(false); return; }
+    const on = Math.max(CONFIG.autoMinLevel, floor * 2.5, amb * 1.6, bg * 1.8);
+    const holdT = Math.max(CONFIG.autoMinLevel * 0.6, floor * 1.6, amb * 1.4, bg * 1.6);
+    const strongT = Math.max(CONFIG.autoMinLevel * 1.3, floor * 3.5, amb * 2, bg * 2.5);
+    if (!rec) {
+      if (now - Math.max(lastSpokeAt, lastTalkEnd) < 800) return;           // لا يسمع صدى آخر كلمة لنزيه (ولا يُحسب من ضجيج المكان)
+      room(lvl);                                                             // ضجيج المكان يُقاس والمايك لا يسجّل
+      if (hist.length < 20 || lvl <= on) return;                             // أول ثانية بعد فتح المايك: يتعرّف على صوت المكان قبل أن يسمع
+      begin(now);
+    }
     micLevel += (Math.min(1, rms * 8) - micLevel) * 0.4;
-    if (loud) { loudMs += dt; lastLoud = now; }
-    if (now - lastLoud > CONFIG.silenceMs) finish(loudMs >= CONFIG.autoMinSpeechMs);
-    else if (forced && !loudMs && now - startedAt > 7000) finish(false);
-    else if (now - startedAt > CONFIG.maxRecordSeconds * 1000) finish(true);
+    recAll.push(lvl);
+    above.push(lvl > holdT ? 1 : 0); if (above.length > 3) above.shift();
+    // «ما زال يتكلم»: إطاران من آخر ثلاثة أعلى من الحد (قمة ضجيج منفردة لا تمدّ التسجيل بعد أن يسكت الزائر)
+    if (lvl > holdT * 0.7 && above.reduce((a, b) => a + b, 0) >= 2) { voicedMs += dt; lastVoiced = now; peak = Math.max(peak, lvl); }
+    if (lvl >= strongT) strongMs += dt;
+    const dur = now - startedAt, strong = strongMs >= 200;
+    if (!forced && !bargeRec) {
+      if (dur > 700 && voicedMs < 120) return finish(false, true);              // صوت عابر (طرقة، ضحكة، كحة): ليس كلاماً
+      if (!confirmed && voicedMs >= 400 && voicedMs / Math.max(1, dur) >= 0.3 && strong) confirm();
+      if (!confirmed && dur > 4000) { for (const x of recAll.slice(-40)) near(x); return finish(false, true); }   // 4 ثوانٍ بلا كلام واضح: صوت المكان لا زائر
+    }
+    if (now - lastVoiced > CONFIG.silenceMs) {
+      const enough = voicedMs >= Math.min(400, CONFIG.autoMinSpeechMs) && voicedMs / Math.max(1, dur) >= 0.25;
+      if (forced) finish(voicedMs >= 200);
+      else if (bargeRec) finish(enough);
+      else { const keep = strong && enough; finish(keep, !keep); }
+    }
+    else if (forced && !voicedMs && dur > 7000) finish(false);
+    else if (dur > (forced || bargeRec ? CONFIG.maxRecordSeconds : CONFIG.maxAutoSeconds) * 1000) {
+      if (forced || bargeRec) finish(true);
+      else {                                                                  // 12 ثانية بلا سكتة: إما زائر يتكلم بصوت عالٍ أغلب الوقت، أو ضجيج متصل
+        const keep = confirmed && strongMs >= dur * 0.3;
+        if (!keep) for (const x of recAll.slice(-40)) near(x);
+        finish(keep, !keep);
+      }
+    }
   }, 50);
   autoMic = {
     get recording() { return !!rec; },
-    toggle() { if (rec) return finish(loudMs >= 200); forced = true; begin(performance.now()); },   // ضغطة الزر: ابدأ أو أنهِ يدوياً
+    get active() { return !!rec && (confirmed || forced || hold || bargeRec); },     // تسجيل كلام مؤكد (لا مجرد صوت عابر)
+    learnNoise() { if (!lastAll.length) return; for (const x of lastAll) far(x); for (const x of lastAll.slice(-40)) near(x); lastAll = []; learn(); },   // التحويل لنص قال إن آخر تسجيل ضجيج: يُحسب من صوت المكان
+    toggle() { if (rec) return finish(voicedMs >= 200); forced = true; begin(performance.now()); },   // ضغطة الزر: ابدأ أو أنهِ يدوياً
+    holdStart() { if (rec) finish(false); begin(performance.now(), 'hold'); },
+    holdEnd() { if (!rec || !hold) return false; const held = performance.now() - holdStart; if (held < 350 || voicedMs < 120) { finish(false); return 'short'; } finish(true); return true; },
     stop() { clearInterval(timer); if (rec) finish(false); stream.getTracks().forEach((t) => t.stop()); try { src.disconnect(); } catch {} autoMic = null; },
   };
-  setStatus(CONFIG.idleStatus);
+  setStatus(idle());
 }
 // المتصفحات تشترط لمسة واحدة من المستخدم قبل تشغيل الصوت والمايك
-['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && CONFIG.handsFree) { ensureAudio(); Promise.resolve(audioCtx.resume?.()).then(() => startAutoListen()).then(() => { if (!busy && !speakingNow && !didTalking && !recState && !autoMic?.recording) setStatus(CONFIG.idleStatus); }).catch(() => {}); } }, { passive: true }));
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (did && (CONFIG.handsFree || HOLD)) { ensureAudio(); Promise.resolve(audioCtx.resume?.()).then(() => startAutoListen()).then(() => { if (!busy && !speakingNow && !didTalking && !recState && !autoMic?.recording) setStatus(HOLD ? pttIdleLabel() : CONFIG.idleStatus); }).catch(() => {}); } }, { passive: true }));
+/* «اضغط وتكلّم»: يسجّل ما دام الزر مضغوطاً، ويرسل عند تركه. الضغط أثناء كلام نزيه يقاطعه */
+let holdDown = false;
+micBtn.addEventListener('pointerdown', async (e) => {
+  if (!HOLD || !(did && CONFIG.ownBrain)) return;
+  e.preventDefault(); try { micBtn.setPointerCapture(e.pointerId); } catch {}
+  buzz(15); ensureAudio(); holdDown = true;
+  if (nazihActive()) interrupt();
+  if (!autoMic) { await Promise.resolve(audioCtx.resume?.()).catch(() => {}); await startAutoListen(); }
+  if (!holdDown || !autoMic) return;                   // ترك الزر قبل أن يجهز المايك
+  autoMic.holdStart();
+});
+const holdUp = () => {
+  if (!HOLD || !holdDown) return;
+  holdDown = false;
+  if (autoMic?.holdEnd() === 'short') setStatus('اضغط مع الاستمرار وأنت تتكلم، واترك الزر إذا خلصت');
+};
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => micBtn.addEventListener(ev, holdUp));
+micBtn.addEventListener('contextmenu', (e) => { if (HOLD) e.preventDefault(); });
+if (HOLD) { const how = document.querySelector('#attract .how'); if (how && how.lastChild && how.lastChild.nodeType === 3) how.lastChild.textContent = 'اضغط زر المايك مع الاستمرار وتكلّم'; }
 
 // بديل: التعرف على الكلام من المتصفح
 function startBrowserRecognition() {
@@ -2093,7 +2438,7 @@ function attractSay() {
   clearTimeout(attractT);
   if (!attractOn) return;
   attractT = setTimeout(attractSay, CONFIG.attractEverySeconds * 1000);
-  if (busy || recState || speakingNow || didTalking || autoMic?.recording || document.hidden) return;
+  if (busy || recState || speakingNow || didTalking || autoMic?.active || document.hidden) return;
   speak(CONFIG.attractLines[attractI++ % CONFIG.attractLines.length]);       // إن لم يُلمس الجهاز بعد فتح الصفحة يمنع المتصفح الصوت، فتبقى الدعوة مكتوبة فقط
 }
 function enterAttract() {
@@ -2136,6 +2481,8 @@ async function giveSpeech() {
   try { if (did?.ensure) await Promise.race([did.ensure(), sleep(CONFIG.simliConnectWait * 1000)]); } catch {}     // الوجه الحي يتصل قبل أول كلمة
   if (my !== session) { speechMode = false; return; }
   await speak(text);
+  // v35: مع الوجه الحي يُسلَّم الصوت كله قبل أن يُنطق بكثير، فتبقى «كلمة الافتتاح» (لا تقطعها أصوات القاعة) حتى يسكت الوجه فعلاً
+  while (my === session && (speakingNow || didTalking)) await sleep(250);
   if (my === session) speechMode = false;
   resetIdle();
 }
@@ -2162,7 +2509,7 @@ function resetIdle(keep) {
   idleTimer = setTimeout(() => {
     if (attractOn) return resetIdle(true);          // شاشة الترحيب شغالة: تبقى إلى أن يأتي زائر
     // لا يُمسح الحوار ونزيه يتكلم أو يسمع (في الاستماع التلقائي يتحاور الزائر دقائق بدون أي لمسة)
-    if (talking || busy || recState || speakingNow || didTalking || autoMic?.recording) return resetIdle(true);
+    if (talking || busy || recState || speakingNow || didTalking || autoMic?.active) return resetIdle(true);
     if (didDropped) { location.reload(); return; }      // الأفتار الحي تعطل سابقاً: أعد التحميل لاسترجاعه
     if (dlg.open) dlg.close();
     closeSheets(); newChat();
@@ -2184,3 +2531,4 @@ if (TEST || !CONFIG.showWelcome) onboard.hidden = true;
 initScreen();
 resetIdle();
 if (!TEST) enterAttract();                         // الشاشة الرئيسية تبدأ بالترحيب إلى أن يأتي أول زائر
+if (!TEST && SCREEN && window.NAZIH_SIMLI) setTimeout(() => warmAnswers(), 6000);   // v35: صوت الأجوبة الجاهزة يجهز من فتح الصفحة (في الخادم)، فتُنطق فوراً
