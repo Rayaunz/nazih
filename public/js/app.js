@@ -125,6 +125,7 @@ const CONFIG = {
   livekitVersion: '2.24.1',    // مكتبة LiveKit للمتصفح (وضع lemon فقط): تعرض فيديو وجه LemonSlice
   // v38: أُلغي انتظار الوجه قبل الجواب (كان lemonConnectWait: 4). الجواب يبدأ فوراً بصوت واحد، والوجه يتولى الجواب التالي (speak في makeLemonAvatar)
   lemonIdleSeconds: 90,        // تُقفل جلسة LemonSlice بعد هذا السكوت (لا تُحسب دقائق والشاشة واقفة). v35: 90 (كان 120)
+  lemonTouchSeconds: 10,       // v40 (البند 7): من تكلّم خلال هذه المدة من لمسه للشاشة تُفتح له جلسة LemonSlice مع أول كلمة (قبل اكتمال سؤاله). من لمس ولم يتكلم لا تُفتح له جلسة
   simliConnectWait: 9,       // أقصى انتظار (ثوانٍ) لاتصال Simli قبل أن يُنطق الجواب بصورة نزيه
   greeting: 'يا هلا والله، حيّاك الله! أنا نزيه. وش بغيت تعرف عن النزاهة ومكافحة الفساد؟ اسألني، أو اختر من الأسئلة، أو قل: اختبرني.',
 };
@@ -691,14 +692,22 @@ function ensureDidConnected(why = '') {
   })();
   return didReconnecting;
 }
-/* v38: في وضع lemon تفتح اللمسة الجلسة مرة واحدة لكل زائر (اللمسة التي تُنهي شاشة الترحيب). كانت كل لمسة والوجه غير متصل
-   (تمرير الأنظمة، خيارات الاختبار، فتح الإعدادات بعد أن أُقفلت الجلسة للسكوت) تفتح جلسة مدفوعة جديدة. السؤال والكلام ما زالا يفتحانها */
-let touchConnected = false;
+/* v40 (البند 7): في وضع lemon لا تفتح اللمسة جلسة مدفوعة. تجهّز ما هو مجاني فقط (غرفة LiveKit مسخّنة، وفك قفل صوتها في iPad/iPhone
+   داخل اللمسة نفسها)، وتُفتح الجلسة مع أول كلام يقوله الزائر خلال CONFIG.lemonTouchSeconds من لمسه، قبل أن يكتمل سؤاله (كانت تُفتح
+   عند اكتمال السؤال، أو مع أول لمسة ولو لم يتكلم فتبقى تُحسب حتى 90 ثانية سكوت). من يلمس ولا يتكلم لا تُفتح له جلسة.
+   والسؤال نفسه (بالصوت أو الكتابة أو الاقتراحات) يفتحها كما كان. Simli كما هو: اللمسة تفتحه */
+let touchAt = -1e9;
+const touchFresh = () => performance.now() - touchAt < CONFIG.lemonTouchSeconds * 1000;
 ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => {
   if (!did || !(didDown || did.ensure)) return;
-  if (did.lemon) { if (touchConnected) return; touchConnected = true; }
+  if (did.lemon) { touchAt = performance.now(); did.touch?.(); return; }
   ensureDidConnected('touch');
 }, { passive: true }));
+// زائر بدأ يتكلم للتو (أول كلماته، والسؤال لم يكتمل): وقت فتح الوجه الحي
+function heardVisitor() {
+  if (did?.lemon) { if (touchFresh()) ensureDidConnected('speech'); }
+  else if (recentVisitor()) ensureDidConnected('speech');
+}
 
 /* عقل الموقع: مايك D-ID يبقى مكتوماً دائماً، والموقع هو الذي يسمع ويجاوب */
 let didTalking = false, lastTalkEnd = 0;
@@ -1149,7 +1158,7 @@ function makeLemonAvatar(own) {
   }
   const armIdle = () => { clearTimeout(idleT); if (!live()) return; idleT = setTimeout(() => { if (!live()) return; if (!didTalking && !speakingNow) close('أُقفلت الجلسة بعد السكوت'); else armIdle(); }, CONFIG.lemonIdleSeconds * 1000); };
   function connect() {
-    if (live()) return Promise.resolve(true);
+    if (live()) { armIdle(); return Promise.resolve(true); }       // v40: زائر يتكلم أو يسأل والوجه متصل: لا تُقفل الجلسة في منتصف سؤاله
     if (connecting) return connecting;
     if (fails >= 3 && performance.now() - lastFail < 120000) return Promise.resolve(false);     // بعد ثلاث محاولات فاشلة: استراحة دقيقتين
     // v35: لا تظهر صورة نزيه القديمة في وضع lemon أبداً: تبقى صورة الشخصية الجديدة أثناء الاتصال، وعند التعذّر يكمل نزيه بصوته فوقها
@@ -1298,6 +1307,13 @@ function makeLemonAvatar(own) {
     events: own.events,
     /* من فتح الصفحة (مجاناً، بلا جلسة): تنزيل مكتبة LiveKit وتسخين الاتصال بخادمها (DNS وTLS واختيار أقرب منطقة) */
     ensure: connect, preload() { loadSdk().then((m) => { if (window.NAZIH_LK_URL && !preRoom && m.Room) { try { preRoom = new m.Room(); Promise.resolve(preRoom.prepareConnection?.(window.NAZIH_LK_URL)).catch(() => {}); } catch {} } }).catch(() => {}); },
+    /* v40 (البند 7): لمسة الزائر: تجهيز مجاني فقط، بلا جلسة. الغرفة المسخّنة يُفك قفل صوتها داخل اللمسة (iPad/iPhone)، فإذا فُتحت الجلسة
+       بعد ثوانٍ مع أول كلمة استعملت الغرفة نفسها وسُمع صوت الوجه دون لمسة أخرى (كما كان حين تفتحها اللمسة نفسها) */
+    touch() {
+      try { if (sdk && !preRoom && !room && window.NAZIH_LK_URL) { preRoom = new sdk.Room(); Promise.resolve(preRoom.prepareConnection?.(window.NAZIH_LK_URL)).catch(() => {}); } } catch {}
+      try { preRoom?.startAudio?.()?.catch?.(() => {}); } catch {}
+      if (!sdk) loadSdk().then((m) => { if (window.NAZIH_LK_URL && !preRoom && !room && m.Room) { try { preRoom = new m.Room(); Promise.resolve(preRoom.prepareConnection?.(window.NAZIH_LK_URL)).catch(() => {}); } catch {} } }).catch(() => {});
+    },
     /* الجملة التالية: صوتها يُجهَّز في الخادم الآن، فيُنطق فور انتهاء الجملة الحالية بلا انتظار */
     /* الجملة التالية تُجهَّز لمن سينطقها فعلاً: الوجه (صوته في الخادم) أو صوت نزيه (في الصفحة، بإرجاع false) */
     prefetch(text, seq) {
@@ -1419,8 +1435,9 @@ function makeSpeaker() {
   const run = (async () => {
     speakingNow = true;
     try {
-      // v38: LemonSlice: يبدأ الاتصال (إن لم يكن) مرة واحدة لكل جواب في الخلفية، ولا ينتظره النطق (انظر speak في makeLemonAvatar)
-      if (did?.lemon && settings.voice) ensureDidConnected();
+      /* v40 (البند 7): لا يفتح النطقُ نفسه جلسة LemonSlice. كانت كل عبارة (بطاقات «اختبر نفسك» و«تصفّح الأنظمة» و«قيّم تجربتك»،
+         و«وش تسوي لو؟»، ونتيجة الاختبار، و«ما سمعتك زين») تفتح جلسة مدفوعة لزائر لم يتكلم. الجلسة يفتحها الكلام والسؤال فقط
+         (heardVisitor و ask)، وإن كان الوجه متصلاً نطق هذه العبارات */
       // ---- شخصية D-ID ----
       while (did) {
         if (cur === null) cur = await next();
@@ -1960,16 +1977,41 @@ const UOH_DEF_SENT = /بشؤون وزارت|الجه[ةه] المستقل|الم
 // جملة من نظام آخر لا يعرّف الوزير بهذا المعنى (ما لم تذكر معه لوائح الجدول أو الجزاء التأديبي): تبقى كما هي
 const UOH_OTHER_LAW = /نظام (?:مكافح|حماي|هيئ|ديوان|المرافعات|مجلس|المناطق|البيع)|النظام (?:الجزائي|الأساسي|الاساسي)|(?<!(?:التنفيذي[ةه] ل|لائح[ةه] ))نظام الخدم[ةه] المدني[ةه]|وزير التعليم|بالنسب[ةه] للجهات الحكومي|المنظم[ةه] لشؤون منسوبي/;
 const UOH_TABLE_LAW = /الانضباط|للموارد البشري|لائح[ةه] (?:ال)?موارد البشري|تأديبي|تاديبي|الجزاء/;
-// جملة تشرح المسمى الجديد نفسه («مدير الجامعة في اللوائح القديمة هو اليوم رئيس الجامعة»): تبقى كما كتبها، فلا تصير «رئيس الجامعة هو رئيس الجامعة»
+/* جملة تشرح المسمى نفسه وتربط القديم بالجديد: تبقى كما كتبها، فلا تصير «تغيّر المسمى من رئيس الجامعة إلى رئيس الجامعة».
+   مثل: «مدير الجامعة هو اليوم رئيس الجامعة»، «كان يسمى مدير الجامعة، وصار رئيس الجامعة»، «كلمة الوزير في النظام تعني في جامعة حائل
+   رئيس الجامعة»، «رئيس الجامعة، لأنه هو الوزير في النظام»، «مدير الجامعة ورئيس الجامعة نفس المنصب». لا تكفي «يعني» العابرة ولا ذكر
+   الاسمين في جملة واحدة: «يحيل مدير الجامعة العضو إلى التحقيق، ثم يصدر رئيس الجامعة القرار» تُبدَّل */
 const UOH_NEW = /رئيس\s+(?:ال)?جامع[ةه]/;
-// (لا تكفي «يعني» العابرة ولا «المادة السابقة»: يجب أن تربط الجملةُ المسمى القديم بالجديد)
-const uohExplains = (seg) => {
-  const p = seg.replace(/[ً-ْٰـ]/g, '');
-  return UOH_NEW.test(p) && (/(?:المقصود|يقصد|المراد)\s+(?:ب|من\s+)?(?:مدير\s+الجامع[ةه]|(?:ال)?وزير)/.test(p)
-    || /(?:مدير\s+الجامع[ةه]|الوزير)[^.؟?!؛]{0,40}\s(?:هو|هي|يعني|بمعن[ىي]|صار|اصبح|أصبح|اسمه|يسم[ىي])\s+(?:اليوم\s+|الآن\s+|الان\s+|حاليا\s+)?(?:هو\s+)?رئيس/.test(p)
-    || /(?:المسم[ىي]|اللقب|الاسم)\s+(?:القديم|السابق|الجديد|الحالي|تغير|تغيّر|تغي)/.test(p));
-};
+const UOH_EXPLAIN = (() => {
+  const O = '(?:مدير\\s+(?:ال)?جامع[ةه]|(?:ال)?وزير(?:\\s+(?:ال)?مختص)?)', N = 'رئيس\\s+(?:ال)?جامع[ةه]', G = '[^.؟?!؛\\n،,]';
+  const OE = '(?=\\s*(?:[،,.؟?!؛\\n)]|$)|\\s+(?:في|هنا|عندنا|المقصود|المذكور|الوارد|نفسه|نفسها|سابقا|سابقاً|بالنسب[ةه]|حسب|وفق)(?![ء-ي]))';
+  const CM = '\\s*[،,]\\s*(?:(?:بس|لكن|ولكن)\\s+)?(?:(?:و?في\\s+(?:ال)?جامع[ةه](?:\\s+حائل)?|عندنا|هنا|اليوم|الآن|الان|حاليا|حالياً|لأنه|لانه|لأن|لان)\\s+)?';
+  const F = '(?:\\s+(?:به|بها|اليوم|الآن|الان|حاليا|حالياً|نفسه|نفسها|هنا|عندنا|في\\s+(?:ال)?جامع[ةه](?:\\s+حائل)?|في\\s+(?:هذ[اه]\\s+)?(?:ال)?(?:نظام|لائح[ةه]|ماد[ةه]|نص)))*\\s+';
+  return new RegExp([
+    `${O}${G}{0,40}?(?:^|[\\s(])و?(?:هو|هي|يعني|تعني|بمعن[ىي]|المقصود|المراد|يقصد|صار|أصبح|اصبح|اسمه|اسمها|يسم[ىي]|تسم[ىي])${F}(?:هو\\s+)?${N}`,
+    `${O}${CM}و?(?:هو|هي|يعني|تعني|بمعن[ىي]|المقصود|المراد|يقصد|صار|أصبح|اصبح|اسمه|اسمها|يسم[ىي]|تسم[ىي])${F}(?:هو\\s+)?${N}`,
+    `${O}${G}{0,40}?\\s*[،,]\\s*(?:و|ف)?(?:هو|هي)${F}(?:هو\\s+)?${N}`,
+    `${O}\\s*[،,(]\\s*(?:أي|اي)\\s+${N}`,
+    `${N}${G}{0,30}?(?:^|[\\s(])و?(?:هو|هي|كان\\s+(?:يسم[ىي]|اسمه)|كانت\\s+(?:تسم[ىي]|اسمها)|بدل|بدلا|بدلاً|سابقا|سابقاً|يعني|تعني|بمعن[ىي]|المقصود|المراد|اسمه|يسم[ىي])(?:\\s+(?:من|يسم[ىي]|اسمه|اسمها|نفسه|نفسها))*\\s+(?:هو\\s+)?${O}${OE}`,
+    `${N}${G}{0,30}?${CM}و?(?:هو|هي|كان\\s+(?:يسم[ىي]|اسمه)|كانت\\s+(?:تسم[ىي]|اسمها)|بدل|بدلا|بدلاً|سابقا|سابقاً|يعني|تعني|بمعن[ىي]|المقصود|المراد|اسمه|يسم[ىي])(?:\\s+(?:من|يسم[ىي]|اسمه|اسمها|نفسه|نفسها))*\\s+(?:هو\\s+)?${O}${OE}`,
+    `${N}\\s*\\(\\s*${O}`,
+    `من\\s+${O}\\s+(?:إلى|الى)\\s+${N}`, `من\\s+${N}\\s+(?:إلى|الى)\\s+${O}`,
+    `${O}\\s+و\\s*${N}${G}{0,15}(?:نفس|هما|واحد)`, `${N}\\s+و\\s*${O}${G}{0,15}(?:نفس|هما|واحد)`,
+    '(?:المسم[ىي]|اللقب|الاسم)\\s+(?:القديم|السابق|الجديد|الحالي|تغير|تغيّر|تغي|اختلف)', '(?:تغير|تغيّر|تبدل|تبدّل|اختلف)\\s+(?:ال)?(?:مسم[ىي]|اسم|لقب)',
+    `(?:المقصود|يقصد|المراد)\\s+(?:ب|من\\s+)?${O}`,
+  ].join('|'));
+})();
+const uohExplains = (seg) => { const p = seg.replace(/[ً-ْٰـ]/g, ''); return UOH_NEW.test(p) && UOH_EXPLAIN.test(p); };
+// النموذج شرح المسمى بنفسه في جملة بقيت كما هي: لا يُكرَّر التوضيح بعد الجواب
+const UOH_TAUT = [/(?<!(?:نائب|وكيل)\s+)رئيس\s+(?:ال)?جامع[ةه](?:\s+حائل)?[^.؟?!؛\n،,]{0,18}?رئيس\s+(?:ال)?جامع[ةه]/,
+  /(?<!(?:نائب|وكيل)\s+)رئيس\s+(?:ال)?جامع[ةه](?:\s+حائل)?(?=[^.؟?!؛\n]{0,20}?رئيس\s+(?:ال)?جامع[ةه])[^.؟?!؛\n]{0,20}?(?:سابق|حالي|اليوم|الآن|الان|القديم|الجديد|اسم|يسم|مسما|مسمى|لقب)/];
+const UOH_MIN_WORD = /(?:^|[^ء-ي])[وفبلك]?(?:ال|لل)?وزير(?![ء-ي])/, UOH_OLD_WORD = /مدير\s+(?:ال)?جامع[ةه]/;
+const uohExplained = (reply, word) => reply.replace(/[«»“”]/g, '').split(/(?<=[.؟?!؛\n])/).some((x) => { const p = x.replace(/[ً-ْٰـ]/g, ''), m = UOH_NEW.test(p) && UOH_EXPLAIN.exec(p); return !!m && (word.test(m[0]) || (!/مدير\s+(?:ال)?جامع|وزير/.test(m[0]) && word.test(p))); });
+// لفظ يُذكر كما ورد («لفظ «مدير الجامعة»»، «النظام يقول «الوزير»»): يبقى بين علامتي التنصيص منقولاً، ويأتي التوضيح بعد الجواب
+const UOH_MENTION2 = /(?:^|[^ء-ي])[وف]?ب?(?:كلم[ةه]|كلمت[يا]|لفظ[ةه]?|لفظ[يا]|عبار[ةه]|(?:ال)?مسم[ىي]|مصطلح|مصطلح[يا]|اسم|يقول|تقول|يقولون|تسمي[ةه]?|يسمي[ةه]?|يسم[ىي]|تسم[ىي]|سماه?|يسمونه?|تستخدم|يستخدم|تستعمل|يستعمل|وردت?|يرد|ترد|يذكر|تذكر|ذكرت?|فيه|فيها|نصه|نصها)(?:\s+[^\s«»،,.؟?!؛:]+){0,3}\s*[:،,]?\s*$/;
+const UOH_MENTION = /(?:^|[^ء-ي])[وف]?ب?(?:كلم[ةه]|لفظ[ةه]?|عبار[ةه]|(?:ال)?مسم[ىي]|مصطلح|اسم|يقول|تقول|يقولون|تسمي[ةه]?|يسمي[ةه]?|تستخدم|يستخدم|تستعمل|يستعمل|وردت?|يرد|ترد|يذكر|تذكر|ذكرت?)\s*[:،,]?\s*$/;
 // النموذج شرح المسمى داخل الجملة («يوقعه الوزير، أي رئيس الجامعة،»): يُحذف الشرح ويُبدَّل اللفظ، ويُقال توضيح الدكتور بعد الجواب مرة واحدة
+const UOH_MENTION_IN = /(?:^|[^ء-ي])[وف]?ب?(?:يقول|تقول|يقولون|يذكر|تذكر|ذكرت?|يستخدم|تستخدم|يستعمل|تستعمل|يسمي|تسمي|يسم[ىي]|تسم[ىي]|سماه|يسمونه|وردت?|يرد|ترد|لفظ[ةه]?|لفظ[يا]|كلم[ةه]|كلمت[يا]|عبار[ةه]|مصطلح)(?:\s+[^\s،,.؟?!؛]+){0,3}\s+[وفبلك]?(?:ال|لل)?(?:وزير|مدير\s+(?:ال)?جامع)/;
 const UOH_APPOS = /((?:^|[^ء-ي])[وف]?(?:بال|لل|كال|ال)وزير(?:\s+(?:ال)?مختص)?)\s*[،,]\s*(?:أي|اي|يعني|وهو|وهي|و?المقصود\s+به|و?المراد\s+به|ويقصد\s+به)\s+(?:(?:هنا|عندنا|اليوم|حاليا|في\s+(?:ال)?جامع[ةه](?:\s+حائل)?)\s+)?(?:هو\s+)?رئيس\s+(?:ال)?جامع[ةه](?:\s+حائل)?(?:\s*[،,](?=\s)|(?=\s*[.؟?!؛\n]|\s*$))/g;
 const UOH_APPOS_P = /((?:^|[^ء-ي])[وف]?(?:بال|لل|كال|ال)وزير(?:\s+(?:ال)?مختص)?)\s*\(\s*(?:أي\s+|اي\s+|يعني\s+)?رئيس\s+(?:ال)?جامع[ةه](?:\s+حائل)?\s*\)/g;
 const UOH_MARKS = '[\\u064B-\\u0652\\u0670\\u0640]*';            // تشكيل وتطويل قد يكتبهما النموذج داخل الكلمة
@@ -1992,7 +2034,7 @@ const UOH_SELF_NOTE = new RegExp([
   '(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا\\s+|في\\s+\\S+\\s+)?(?:يقصد|المقصود|المراد)\\s+به\\s+رئيس\\s+(?:ال)?جامع[ةه]',          // «الوزير هنا يقصد به رئيس الجامعة»
   'رئيس\\s+(?:ال)?جامع[ةه]\\s+(?:هو\\s+)?(?:المقصود|المراد)\\s+ب(?:ال)?وزير(?:\\s+(?:ال)?مختص)?',                                   // «ورئيس الجامعة هو المقصود بالوزير»
   '(?:بمعن[ىي]|يعني|أي|اي)\\s+(?:أن\\s+|ان\\s+)?(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا\\s+)?(?:هو\\s+)?رئيس\\s+(?:ال)?جامع[ةه]',      // «بمعنى أن الوزير هو رئيس الجامعة»
-  '(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا|عندنا|في\\s+(?:هذ[اه]\\s+)?(?:ال)?(?:نظام|لائح[ةه]|ماد[ةه])|في\\s+(?:ال)?جامع[ةه](?:\\s+حائل)?)\\s+(?:هو\\s+)?رئيس\\s+(?:ال)?جامع[ةه]',      // «والوزير هنا رئيس الجامعة»
+  '(?:ال)?وزير(?:\\s+(?:ال)?مختص)?\\s+(?:هنا|عندنا|في\\s+(?:هذ[اه]\\s+)?(?:ال)?(?:نظام|لائح[ةه]|ماد[ةه])|في\\s+(?:ال)?جامع[ةه](?:\\s+حائل)?)\\s+(?:(?:هو|يعني|تعني|يقصد\\s+به|المقصود\\s+به|المراد\\s+به)\\s+)?رئيس\\s+(?:ال)?جامع[ةه]',      // «والوزير هنا (يعني) رئيس الجامعة»
 ].join('|'));
 function uohFixPart(s, U, R, qPrev = '', qNext = '') {     // نص خارج الاقتباس: يُبدَّل المسمى جملةً جملة
   const segs = s.split(/(?<=[.؟?!؛\n])/), strip = (x) => x.replace(/[ً-ْٰـ]/g, '');
@@ -2006,7 +2048,8 @@ function uohFixPart(s, U, R, qPrev = '', qNext = '') {     // نص خارج ال
         U.selfNoted = true;
         const hrOnly = U.laws.includes('hr-reg') && !U.laws.some((x) => x === 'discipline' || x === 'discipline-reg');
         const id = /مختص/.test(self[0]) || hrOnly ? 'hr-reg' : U.laws.includes('discipline') || !U.laws.includes('discipline-reg') ? 'discipline' : 'discipline-reg';
-        return seg.match(/^\s*/)[0] + UOH_TERMS.minister[id].note + (seg.match(/\s+$/) || [''])[0];     // يبقى السطر الجديد بعدها
+        const lead = seg.match(/^[\s،,]*/)[0];            // «…الفصل»، والوزير هنا…» → «…الفصل»، والمقصود…» (لا تلتصق بعلامة الاقتباس)
+        return (lead && !/\s$/.test(lead) ? lead + ' ' : lead) + UOH_TERMS.minister[id].note + (seg.match(/\s+$/) || [''])[0];     // يبقى السطر الجديد بعدها
       }
       U.selfMention = true;                                // ويُضاف توضيح الدكتور بعد الجواب مرة واحدة
       const pre = plain.slice(0, self.index), cut = Math.max(pre.lastIndexOf('،'), pre.lastIndexOf(','));
@@ -2014,25 +2057,46 @@ function uohFixPart(s, U, R, qPrev = '', qNext = '') {     // نص خارج ال
       else return seg;                                     // يقول أكثر من التوضيح: تبقى كما هي
     }
     const sub = U?.minister && !UOH_DEF_SENT.test(whole) && !(UOH_OTHER_LAW.test(plain) && !UOH_TABLE_LAW.test(plain));
+    if (UOH_MENTION_IN.test(plain)) {             // يُذكر اللفظ نفسه («تقول المادة الوزير»): يبقى، ويُوضَّح بعد الجواب
+      if (U) { if (U.minister && R.ministerT.test(plain)) U.quoteMin = true; if (R.renamed.some(([, , t]) => t.test(plain))) U.quoteRenamed = true; }
+      return seg;
+    }
     if (sub) seg = seg.replace(UOH_APPOS, '$1').replace(UOH_APPOS_P, '$1');
-    if (uohExplains(seg)) return seg;
-    let out = seg;
-    for (const [re, to] of R.renamed) out = out.replace(re, (m, a, pre) => a + pre + to);
-    if (sub) {
-      out = out.replace(R.minister, (m, a, conj, art, term) => {
-        for (const id of R.ids.get(uohBare(term)) || ['discipline']) U.hits.add(id);
+    const ids = [], rep = (x) => { let out = x;
+      for (const [re, to] of R.renamed) out = out.replace(re, (m, a, pre) => a + pre + to);
+      if (sub) out = out.replace(R.minister, (m, a, conj, art, term) => {
+        ids.push(...(R.ids.get(uohBare(term)) || ['discipline']));
         return a + conj + ({ 'بال': 'ب', 'لل': 'ل', 'كال': 'ك', 'ال': '' })[uohBare(art)] + UOH_TERMS.ministerTitle;
       });
-    }
+      return out; };
+    const p2 = strip(seg), ex = UOH_NEW.test(p2) && UOH_EXPLAIN.exec(p2);
+    if (ex) { if (p2.length !== seg.length || !/مدير\s+(?:ال)?جامع|وزير/.test(ex[0])) return seg;
+      const r = rep(seg.slice(0, ex.index)) + seg.slice(ex.index, ex.index + ex[0].length) + rep(seg.slice(ex.index + ex[0].length)); for (const id of ids) U.hits.add(id); return r; }
+    const out = rep(seg);
+    if (typeof UOH_TAUT !== 'undefined' && out !== seg && UOH_TAUT.some((t) => t.test(strip(out)))) return seg;
+    for (const id of ids) U.hits.add(id);
     return out;
   }).join('');
+}
+/* كلمة واحدة بين علامتي تنصيص («الوزير»، «مدير الجامعة») تُعامل كباقي الجملة، إلا لفظاً يُذكر كما ورد (UOH_MENTION) فيبقى منقولاً.
+   pad: بالطول نفسه (العلامتان فراغان) لتبقى المواضع كما هي، فيرى uohHold النص كما يراه uohFix */
+function uohUnquote(s, pad = false) {
+  let lastK = -1;
+  return s.replace(/«\s*((?:[وفبلك]?(?:ال|لل)?)?(?:وزير(?:\s+(?:ال)?مختص)?|مدير\s+(?:ال)?جامع[ةه]|رئيس\s+(?:ال)?جامع[ةه]))\s*»/g,
+    (m, t, at, str) => {
+      const un = pad ? ' ' + m.slice(1, -1) + ' ' : t;
+      if (/رئيس/.test(t)) return un;
+      const w = str.slice(Math.max(0, at - 48), at).replace(/[ً-ْٰـ]/g, '');
+      const keep = UOH_MENTION.test(w.slice(-24)) || UOH_MENTION2.test(w) || (lastK >= 0 && /^\s*(?:و|أو|،|,)\s*$/.test(str.slice(lastK, at)));
+      if (keep) lastK = at + m.length;
+      return keep ? m : un;
+    });
 }
 function uohFix(s, U) {      // يبدّل المسمى في نص الجواب (للعرض والنطق معاً). النص المنقول حرفياً «...» يبقى كما هو، ويُوضَّح بعد الجواب (uohNote)
   if (!s) return s;
   const R = uohRx();
   if (U) { U.hits = new Set(); U.selfNoted = U.selfMention = U.quoteMin = U.quoteRenamed = false; }      // الحالة من النص الحالي كله فقط (البث يستدعيها على نص يكبر)
-  // كلمة واحدة بين علامتي تنصيص («الوزير»، «مدير الجامعة») مصطلحٌ يُتكلَّم عنه، لا نص منقول: تُعامل كباقي الجملة
-  s = s.replace(/«\s*((?:[وفبلك]?(?:ال|لل)?)?(?:وزير(?:\s+(?:ال)?مختص)?|مدير\s+(?:ال)?جامع[ةه]|رئيس\s+(?:ال)?جامع[ةه]))\s*»/g, '$1');
+  s = uohUnquote(s);
   const parts = s.split(/(«[^»]*(?:»|$)|“[^”]*(?:”|$))/);
   return parts.map((p, k) => {
     if (!(k % 2)) return uohFixPart(p, U, R, parts[k - 1] || '', parts[k + 1] || '');
@@ -2081,7 +2145,7 @@ function uohCites(reply) {
 function uohNote(reply, U) {
   if (!U || U.noted) return '';
   const notes = [];
-  if (U.minister && !U.selfNoted && !UOH_DEF_SENT.test(reply)) {
+  if (U.minister && !U.selfNoted && !UOH_DEF_SENT.test(reply) && (U.selfMention || !uohExplained(reply, UOH_MIN_WORD))) {
     // المواد المستشهد بها (ومعها «المادتين ... و...») ونظامها إن سُمّي بعدها: مادة من نظام آخر بالرقم نفسه لا تُحسب
     const citedMin = uohCites(reply).filter((c) => U.minArts.has(c.num) && (!c.law || U.minArts.get(c.num) === c.law)).map((c) => U.minArts.get(c.num));
     if (U.hits.size || U.quoteMin || U.selfMention || (UOH_NEW.test(reply.replace(/[ً-ْٰـ]/g, '')) && citedMin.length)) {
@@ -2092,7 +2156,7 @@ function uohNote(reply, U) {
       notes.push((UOH_TERMS.minister[id] || UOH_TERMS.minister.discipline).note);
     }
   }
-  if (U.quoteRenamed && !norm(reply).includes(norm(UOH_TERMS.renamedNote))) notes.push(UOH_TERMS.renamedNote);
+  if (U.quoteRenamed && !norm(reply).includes(norm(UOH_TERMS.renamedNote)) && !uohExplained(reply, UOH_OLD_WORD)) notes.push(UOH_TERMS.renamedNote);
   U.noted = true;
   return notes.join(' ');
 }
@@ -2105,6 +2169,19 @@ function uohTail(r) {          // السؤال الختامي، بعد علام�
   const c = /[،,]\s*((?:هل\s+)?(?:تبي|تبغى|تبغي|تحب|تريد|تود|ودك|حاب|تحتاج|اذا تبي|إذا تبي|لو تبي)[^،,.؛!؟?\n]{0,45}[؟?]\s*)$/.exec(o[0]);
   if (c && o.index + c.index >= 25) { const k = c.index + c[0].length - c[1].length, o2 = [o[0].slice(k)]; o2.index = o.index + k; return o2; }
   return o;
+}
+/* v39: جملة فيها «الوزير» يتبعها اقتباس لم يُغلق بعد (نص المادة الأولى مثلاً) تنتظر إغلاقه، لأن تبديل اللفظ فيها يتوقف على ما في
+   الاقتباس (جملة التعريف لا تُبدَّل). وإلا قيل «رئيس جامعة حائل» ثم كُتب «الوزير»، وانزاح ما بعده في الصوت. يرجع طول ما يُعالج ويُنطق الآن */
+const UOH_QSPLIT = /(«[^»]*(?:»|$)|“[^”]*(?:”|$))/;
+function uohHold(s) {
+  const v = uohUnquote(s, true);                      // كما يراه uohFix («المقصود بـ«الوزير»…» لفظٌ في الجملة لا اقتباس)
+  const parts = v.split(UOH_QSPLIT); if (parts.length < 3) return s.length;
+  const q = parts[parts.length - 2]; if (parts[parts.length - 1] || /[»”]$/.test(q)) return s.length;      // آخر ما وصل ليس داخل اقتباس مفتوح
+  // ألفاظ التعريف وصلت داخل الاقتباس (فلن يُبدَّل اللفظ قبله)، أو اقتباس طويل جداً: لا انتظار بعدها
+  if (UOH_DEF_SENT.test(q.replace(/[ً-ْٰـ]/g, '')) || q.length > 300) return s.length;
+  const before = parts[parts.length - 3], at = v.length - q.length - before.length;
+  const m = /[.؟?!؛\n](?=[^.؟?!؛\n]*$)/.exec(before), st = at + (m ? m.index + 1 : 0);
+  return uohRx().ministerT.test(v.slice(st, v.length - q.length)) ? st : s.length;
 }
 function uohPlaceNote(reply, note) {
   if (!note) return reply;
@@ -2120,7 +2197,7 @@ function uohVerbatimNote(text) {   // بعد قراءة نص مادة حرفيا
 }
 const UOH_CRIME = new Set(['bribery', 'forgery', 'aml', 'protect', 'nazaha']);     // أنظمة فيها عقوبة جزائية للفعل نفسه
 const UOH_ACT = /فلوس|مقابل|رشو|رشا|زور|تزوير|مزور|اختلس|غسل|غسيل|سرق|هدي[هت]|هدايا|عطي[هت]|بلغ|بلاغ|ابتز|نفوذ|واسط|اموال|المال العام|سرب|تسريب|افشا|يفشي|ختم|توقيع (?:مدير|زميل|غير)|شهاد[هت]/;   // فعل محدد في السؤال
-function uohContextNote(uo, order, min, crimeQ = false) {     // يُرسل مع المواد: السؤال عن الجامعة، ولوائح فئته، والمسمى في الجامعة (بلا أرقام)
+function uohContextNote(uo, order, min, crimeQ = false, askTitle = false) {     // يُرسل مع المواد: السؤال عن الجامعة، ولوائح فئته، والمسمى في الجامعة (بلا أرقام)
   if (!uo.uni) return '';
   // «اذكر عقوبة الفعل من نظامه أولاً» فقط إذا كان في السؤال نفسه جريمة (crimeQ)، لا لأن مادة من نظام جزائي وقعت في المرجع
   const role = uo.emp || uo.fac, uni2 = order.some((id) => id === 'faculty' || id === 'non-saudi-staff'), crime = crimeQ && order.some((id) => UOH_CRIME.has(id));
@@ -2130,7 +2207,8 @@ function uohContextNote(uo, order, min, crimeQ = false) {     // يُرسل مع
   else if (uo.disc && uo.emp && uo.fac) lines.push('السؤال عن موظفي جامعة حائل وأعضاء هيئة التدريس فيها. الموظف يسري عليه في التأديب نظام الانضباط الوظيفي ولائحته التنفيذية واللائحة التنفيذية للموارد البشرية، وعضو هيئة التدريس تسري عليه لائحته الخاصة، ففرّق بينهما في الجواب.');
   if (role) lines.push('إذا وجدت الحكم في المواد فأجب بصيغة تخص الجامعة، وابدأ بعبارة «في جامعة حائل،» (وإن كان الجواب نعم أو لا فابدأ «نعم، في جامعة حائل،» أو «لا، في جامعة حائل،»). وإن لم تجد الحكم فلا تبدأ بها.');
   if (min) lines.push('إذا نقلت حكماً ورد فيه لفظ «الوزير» في نظام الانضباط الوظيفي ولائحته التنفيذية، أو «الوزير المختص» في اللائحة التنفيذية للموارد البشرية، فهو في جامعة حائل رئيس الجامعة، فسمّه «رئيس الجامعة». ولا تذكر رئيس الجامعة في حكم لم يرد فيه هذا اللفظ، و«الجهة الحكومية» في النصوص هي الجامعة نفسها لا رئيسها. ولا تشرح أنت أن المقصود بالوزير رئيس الجامعة، فهذا التوضيح يُقال بعد جوابك.');
-  if (uni2 && role) lines.push('و«مدير الجامعة» في لوائح الجامعات اسمه اليوم «رئيس الجامعة»، فسمّه «رئيس الجامعة».');
+  // v40: وكذلك إذا سأل الزائر عن المسمى نفسه («هل مدير الجامعة هو نفسه رئيس الجامعة؟»): كان يجيب «ما عندي معلومة مؤكدة» ثم يأتي التوضيح بعكسه
+  if ((uni2 && role) || askTitle) lines.push('و«مدير الجامعة» في لوائح الجامعات اسمه اليوم «رئيس الجامعة»، فسمّه «رئيس الجامعة».');
   return lines.length ? '\n\n【سؤال عن جامعة حائل】\n' + lines.join('\n') : '';     // سؤال عن الجامعة بلا موظف ولا عضو هيئة تدريس ولا لوائح الوزير: كما كان
 }
 let lastCtxInfo = '';                        // لمربع القياس: ما الذي أُرسل مع آخر سؤال
@@ -2241,7 +2319,7 @@ function retrieveContext(text) {
   return '【الأنظمة التي تعرفها، ولا تعرف غيرها】\n' + textLaws().map((l) => l.name).join('؛ ') + '.\n\n'
     + (bank.length ? '【أجوبة موثقة】\n' + bank.map((b) => `س: ${b.q}\nج: ${b.a}`).join('\n') + '\n\n' : '')
     + '【نصوص المواد】\n' + (chosen.length ? chosen.map((c) => `【${c.e.law.name} — ${c.e.a.title}】\n${c.body}`).join('\n\n') : '(لا يوجد نص يتعلق بهذا السؤال)')
-    + uohContextNote(uo, order, uohMin, crime);
+    + uohContextNote(uo, order, uohMin, crime, /مدير (?:ال)?جامع|رئيس (?:ال)?جامع/.test(n));
 }
 
 /* سؤال الزائر يطابق سؤالاً معتمداً (بعد حذف أدوات السؤال والحشو)؟ */
@@ -2271,7 +2349,7 @@ async function ask(text, item = null) {
   if (!early) stopSpeaking();
   closeSheets();
   const intent = item ? null : detectIntent(text);
-  if (intent) { hideWait(); runAction(intent, text); return; }
+  if (intent) { if (did?.lemon && settings.voice) ensureDidConnected(); hideWait(); runAction(intent, text); return; }     // v40: طلبه بكلامه أو كتابته («اختبرني»)
 
   if (!T.marks.recEnd) T.reset();
   T.mark('askStart');
@@ -2323,12 +2401,15 @@ async function ask(text, item = null) {
           full += dec.decode(value, { stream: true });
           // v39: المسمى يُبدَّل مرة واحدة في النص كله (UOH_TERMS)، ومنه يُقطع الصوت والنص المعروض معاً، فلا يختلف المنطوق عن المكتوب
           const raw = full.split('§')[0]; let k = -1; { const re = /[.؟?!؛\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/g; let m; while ((m = re.exec(raw))) k = m.index + 1; }
+          if (k > 0 && U?.minister) k = uohHold(raw.slice(0, k));
           const ans = k > 0 ? uohFix(raw.slice(0, k), U) : '';      // الجملة الناقصة لا تُعالج ولا تُنطق قبل اكتمالها
           if (!firstSaid) {
             /* v35: الخادم يرسل الجملة كاملة بلا مسافة بعدها، فتُقبل نهاية الجملة في آخر ما وصل أيضاً (كانت الأولى تنتظر وصول الثانية) */
             // v39: في سؤال الجامعة لا تُقطع الجملة الأولى عند الفاصلة: يُحكم على تبديل «الوزير» بالجملة كاملة
             const m1 = /[.؟?!\n](?=\s)|[؟?!]$|(?<![A-Za-z0-9@])\.$/.exec(ans.slice(18)), m2 = /[،؛:](?=\s)/.exec(ans.slice(45));
-            const cut = Math.min(m1 ? 18 + m1.index + 1 : Infinity, m2 ? 45 + m2.index + 1 : Infinity);
+            let cut = Math.min(m1 ? 18 + m1.index + 1 : Infinity, m2 ? 45 + m2.index + 1 : Infinity);
+            // v39: سؤال ختامي في آخر الدفعة الأولى ينتظر في سؤال الجامعة، فيأتي التوضيح قبله
+            if (cut <= ans.length && U && (U.minister || U.quoteRenamed)) { const q = uohTail(ans); if (q && q.index > 0 && cut > q.index && /[\p{L}\p{N}]/u.test(ans.slice(0, q.index))) cut = q.index; }
             if (cut <= ans.length) {
               spoken = cut;
               T.mark('firstText'); clearTimeout(fillT); firstSaid = true;
@@ -2515,6 +2596,7 @@ async function startRecording() {
   const buf = new Uint8Array(micAnalyser.frequencyBinCount);
   let heardSpeech = false, lastLoud = performance.now(), stopped = false;
   const startedAt = performance.now();
+  let loudMs = 0, prevT = startedAt, toldFace = false;          // v40 (البند 7): زر التحدث (‎?mic=button‎): وجه lemon مع أول كلام واضح
   const stop = () => { if (stopped) return; stopped = true; try { recorder.stop(); } catch {} };
   recState = { stop };
 
@@ -2533,8 +2615,8 @@ async function startRecording() {
     let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / buf.length);
     micLevel += (Math.min(1, rms * 8) - micLevel) * 0.4;
-    const now = performance.now();
-    if (rms > 0.035) { heardSpeech = true; lastLoud = now; }
+    const now = performance.now(), dtm = Math.min(200, now - prevT); prevT = now;
+    if (rms > 0.035) { heardSpeech = true; lastLoud = now; loudMs += dtm; if (did?.lemon && !toldFace && loudMs >= 300) { toldFace = true; heardVisitor(); } }
     if (heardSpeech && now - lastLoud > CONFIG.silenceMs) return stop();
     if (!heardSpeech && now - startedAt > 7000) return stop();
     if (now - startedAt > CONFIG.maxRecordSeconds * 1000) return stop();
@@ -2695,7 +2777,8 @@ async function startAutoListen() {
   const near = (x) => { hist.push(x); if (hist.length > 100) hist.shift(); };          // آخر 5 ثوانٍ
   const far = (x) => { wide.push(x); if (wide.length > 600) wide.shift(); };           // آخر 30 ثانية
   const room = (x) => { near(x); far(x); };                                             // صوت المكان: لا زائر يتكلم ولا نزيه
-  let rec = null, chunks = [], voicedMs = 0, strongMs = 0, peak = 0, lastVoiced = 0, startedAt = 0, last = performance.now(), forced = false, barge = false, bargeRec = false, hold = false, holdStart = 0, confirmed = false;
+  let rec = null, chunks = [], voicedMs = 0, strongMs = 0, peak = 0, lastVoiced = 0, startedAt = 0, last = performance.now(), forced = false, barge = false, bargeRec = false, hold = false, holdStart = 0, confirmed = false, heardV = false;
+  const heardOnce = () => { if (heardV) return; heardV = true; heardVisitor(); };      // v40 (البند 7): أول كلام في هذا التسجيل
   const idle = () => (HOLD ? pttIdleLabel() : CONFIG.idleStatus);
   // learnIt: التسجيل رُفض لأنه ليس كلام زائر، فالأهدأ من نصفه (ما بين الكلمات) صوتٌ للمكان
   const finish = (keep, learnIt = false) => {
@@ -2711,15 +2794,16 @@ async function startAutoListen() {
   };
   const showListening = () => { micBtn.classList.add('listening'); setStatus(hold ? 'أسمعك… اترك الزر إذا خلصت' : 'أسمعك... تكلّم الآن', 'listening'); };
   /* كلام مؤكد (لا مجرد صوت عابر): عندها فقط يُعدّ تفاعلاً */
-  const confirm = () => { if (confirmed) return; confirmed = true; if (recentVisitor()) ensureDidConnected('speech'); resetIdle(attractOn); showListening(); };
+  const confirm = () => { if (confirmed) return; confirmed = true; heardOnce(); resetIdle(attractOn); showListening(); };
   const begin = (now, how = '') => {
     chunks = []; const mine = chunks;
     rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
     rec.ondataavailable = (e) => e.data.size && mine.push(e.data);
-    rec.start(); startedAt = now; lastVoiced = now; voicedMs = 0; strongMs = 0; peak = 0; recAll = []; above.length = 0; confirmed = false;
+    rec.start(); startedAt = now; lastVoiced = now; voicedMs = 0; strongMs = 0; peak = 0; recAll = []; above.length = 0; confirmed = false; heardV = false;
     if (how === 'hold') { hold = true; holdStart = now; }
     if (barge) return;                                       // تسجيل صامت أثناء كلام نزيه (مقاطعة محتملة)
-    if (forced || hold) { confirmed = true; ensureDidConnected('speech'); resetIdle(attractOn); showListening(); }   // ضغط الزر: تفاعل مؤكد
+    // ضغط الزر: تفاعل مؤكد. v40 (البند 7): وجه lemon يُفتح مع أول صوت بعد الضغط، لا بالضغط وحده
+    if (forced || hold) { confirmed = true; if (!did?.lemon) ensureDidConnected('speech'); resetIdle(attractOn); showListening(); }
   };
   const talkingNow = () => speakingNow || didTalking;
   const timer = setInterval(() => {
@@ -2737,6 +2821,9 @@ async function startAutoListen() {
       if (!rec) { if (!talkingNow() && !busy) room(lvl); return; }
       micLevel += (Math.min(1, rms * 8) - micLevel) * 0.4;
       if (lvl > Math.max(0.02, floor * 2)) { voicedMs += dt; lastVoiced = now; peak = Math.max(peak, lvl); }
+      // v40 (البند 7): وجه lemon مع كلام واضح أثناء الضغط (لا ضجيج القاعة، ولا ضغطة قصيرة أقل من 350 ملّي ثانية)
+      if (lvl >= Math.max(CONFIG.autoMinLevel * 1.3, floor * 3.5, amb * 2, bg * 2.5)) strongMs += dt;
+      if (did?.lemon && voicedMs >= 200 && strongMs >= 200 && now - holdStart >= 350) heardOnce();
       if (now - startedAt > CONFIG.talkMaxSeconds * 1000) finish(true);
       return;
     }
@@ -2769,6 +2856,7 @@ async function startAutoListen() {
     // «ما زال يتكلم»: إطاران من آخر ثلاثة أعلى من الحد (قمة ضجيج منفردة لا تمدّ التسجيل بعد أن يسكت الزائر)
     if (lvl > holdT * 0.7 && above.reduce((a, b) => a + b, 0) >= 2) { voicedMs += dt; lastVoiced = now; peak = Math.max(peak, lvl); }
     if (lvl >= strongT) strongMs += dt;
+    if (forced && did?.lemon && voicedMs >= 200 && strongMs >= 100) heardOnce();   // v40 (البند 7): زر التحدث: أول صوت واضح بعد الضغط
     const dur = now - startedAt, strong = strongMs >= 200;
     if (!forced && !bargeRec) {
       if (dur > 700 && voicedMs < 120) return finish(false, true);              // صوت عابر (طرقة، ضحكة، كحة): ليس كلاماً
@@ -3241,7 +3329,7 @@ function attractSay() {
 function enterAttract() {
   if (!SCREEN || !CONFIG.attract || attractOn) return;
   attractOn = true; document.body.classList.add('attract'); attractEl.hidden = false;
-  hideWait(); touchConnected = false; lastAskKey = '';                       // v38: زائر جديد: أول لمسة منه تفتح الوجه
+  hideWait(); touchAt = -1e9; lastAskKey = '';                              // زائر جديد: لمسة من سبقه لا تُحسب له (البند 7)
   try { if (did?.simli) did.stop(); } catch {}                                // لا تبقى جلسة Simli مفتوحة والشاشة فاضية
   attractT = setTimeout(attractSay, 4000);
 }

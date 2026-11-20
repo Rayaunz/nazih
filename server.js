@@ -265,7 +265,11 @@ function lawRefs(n, known) {
   return [...s.matchAll(ART_RE)].map((m) => {
     const num = artNum(m[1]); if (!num) return null;
     const after = s.slice(m.index + m[0].length - m[1].length, m.index + m[0].length - m[1].length + 160);
-    return { num, law: known.find((k) => { const j = after.indexOf('من ' + k); return j >= 0 && j <= 45; }) || null };
+    // v40: أقرب «من <نظام>» بعد الرقم، لا أطول اسم في المدى: «المادة الأولى من نظام مكافحة الرشوة، والمادة الثانية عشرة من نظام الخدمة
+    // المدنية» كانت تُنسب فيها الأولى إلى نظام الخدمة المدنية (اسمه أطول) فتُحذف جملة صحيحة
+    let law = null, at = Infinity;
+    for (const k of known) { const j = after.indexOf('من ' + k); if (j >= 0 && j <= 45 && j < at) { law = k; at = j; } }
+    return { num, law };
   }).filter(Boolean);
 }
 const FILLER_RE = /(^|[\s،.!؟])(?:لحظ[ةه](?:[\s،.!…]+لحظ[ةه])*|لحظات|خل(?:ي)?ني\s+(?:أ|ا)?(?:شوف|تأكد|تاكد|دور|بحث)|دعني\s+(?:أ|ا)?(?:تحقق|رى|بحث|تأكد|تاكد))(?=[\s،.!؟…]|$)[\s،.!…]*/g;
